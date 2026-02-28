@@ -1,6 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { NotFoundException, ConflictException } from '@nestjs/common';
+import { TreeRepository } from 'typeorm';
 import { LocationsService } from './locations.service';
 import { Location } from './entities/location.entity';
 import { CreateLocationDto } from './dto/create-location.dto';
@@ -40,10 +41,10 @@ function makeCreateDto(overrides: Partial<CreateLocationDto> = {}): CreateLocati
 }
 
 // ---------------------------------------------------------------------------
-// Mock TreeRepository factory
+// Mock repository factories
 // ---------------------------------------------------------------------------
 
-function makeTreeRepo() {
+function makeLocationRepo() {
   return {
     findOne: jest.fn(),
     find: jest.fn(),
@@ -53,16 +54,25 @@ function makeTreeRepo() {
   };
 }
 
+function makeLocationTreeRepo() {
+  return {
+    findTrees: jest.fn(),
+    findDescendantsTree: jest.fn(),
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 
 describe('LocationsService', () => {
   let service: LocationsService;
-  let locationRepo: ReturnType<typeof makeTreeRepo>;
+  let locationRepo: ReturnType<typeof makeLocationRepo>;
+  let treeRepo: ReturnType<typeof makeLocationTreeRepo>;
 
   beforeEach(async () => {
-    locationRepo = makeTreeRepo();
+    locationRepo = makeLocationRepo();
+    treeRepo = makeLocationTreeRepo();
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -71,10 +81,15 @@ describe('LocationsService', () => {
           provide: getRepositoryToken(Location),
           useValue: locationRepo,
         },
+        {
+          provide: 'LOCATION_TREE_REPO',
+          useValue: treeRepo,
+        },
       ],
     }).compile();
 
     service = module.get<LocationsService>(LocationsService);
+    module.get<TreeRepository<Location>>('LOCATION_TREE_REPO');
   });
 
   // -------------------------------------------------------------------------
@@ -161,6 +176,45 @@ describe('LocationsService', () => {
   });
 
   // -------------------------------------------------------------------------
+  // findTree()
+  // -------------------------------------------------------------------------
+
+  describe('findTree()', () => {
+    it('should return root nodes with nested children and parent nulled', async () => {
+      const child = makeLocation({
+        id: 2,
+        locationNumber: 'A-01',
+        parent: null,
+        children: [],
+      });
+      const root = makeLocation({
+        id: 1,
+        locationNumber: 'A',
+        parent: null,
+        children: [child],
+      });
+
+      treeRepo.findTrees.mockResolvedValue([root]);
+
+      const result = await service.findTree();
+
+      expect(result).toHaveLength(1);
+      expect(result[0]).toMatchObject({ id: 1, locationNumber: 'A' });
+      expect(result[0].parent).toBeNull();
+      expect(result[0].children).toHaveLength(1);
+      expect(result[0].children[0].parent).toBeNull();
+    });
+
+    it('should return an empty array when there are no locations', async () => {
+      treeRepo.findTrees.mockResolvedValue([]);
+
+      const result = await service.findTree();
+
+      expect(result).toEqual([]);
+    });
+  });
+
+  // -------------------------------------------------------------------------
   // findOne()
   // -------------------------------------------------------------------------
 
@@ -178,15 +232,22 @@ describe('LocationsService', () => {
       const child = makeLocation({
         id: 2,
         locationNumber: 'A-01-01-M1',
-        parent: location,
+        parent: null,
+        children: [],
+      });
+      const locationWithChildren = makeLocation({
+        id: 1,
+        parent: null,
+        children: [child],
       });
 
       locationRepo.findOne.mockResolvedValue(location);
-      locationRepo.find.mockResolvedValue([location, child]);
+      treeRepo.findDescendantsTree.mockResolvedValue(locationWithChildren);
 
       const result = await service.findOne('A-01-01');
 
       expect(result).toMatchObject({ id: 1, locationNumber: 'A-01-01' });
+      expect(result.parent).toBeNull();
       expect(result.children).toHaveLength(1);
       expect(result.children[0]).toMatchObject({ id: 2 });
     });

@@ -1,11 +1,12 @@
 import {
   Injectable,
+  Inject,
   NotFoundException,
   ConflictException,
   Logger,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, TreeRepository } from 'typeorm';
 import { Location } from './entities/location.entity';
 import { CreateLocationDto } from './dto/create-location.dto';
 import { UpdateLocationDto } from './dto/update-location.dto';
@@ -17,6 +18,8 @@ export class LocationsService {
   constructor(
     @InjectRepository(Location)
     private readonly locationRepo: Repository<Location>,
+    @Inject('LOCATION_TREE_REPO')
+    private readonly treeRepo: TreeRepository<Location>,
   ) {}
 
   async create(dto: CreateLocationDto): Promise<Location> {
@@ -57,19 +60,9 @@ export class LocationsService {
 
   async findTree(): Promise<Location[]> {
     this.logger.log('Fetching full location tree');
-    const all = await this.locationRepo.find({ relations: ['parent'] });
-    const map = new Map(all.map((l) => [l.id, l]));
-    for (const loc of all) loc.children = [];
-    const roots: Location[] = [];
-    for (const loc of all) {
-      if (loc.parent) {
-        map.get(loc.parent.id)?.children.push(loc);
-        loc.parent = null;
-      } else {
-        roots.push(loc);
-      }
-    }
-    return roots;
+    const trees = await this.treeRepo.findTrees();
+    this.nullifyParents(trees);
+    return trees;
   }
 
   async findOne(locationNumber: string): Promise<Location> {
@@ -79,17 +72,16 @@ export class LocationsService {
     if (!location) {
       throw new NotFoundException(`Location '${locationNumber}' not found`);
     }
-    const all = await this.locationRepo.find({ relations: ['parent'] });
-    const node = all.find((l) => l.id === location.id)!;
-    return this.buildSubtree(all, node);
+    const tree = await this.treeRepo.findDescendantsTree(location);
+    tree.parent = null;
+    return tree;
   }
 
-  private buildSubtree(all: Location[], node: Location): Location {
-    node.children = all
-      .filter((l) => l.parent?.id === node.id)
-      .map((l) => this.buildSubtree(all, l));
-    node.parent = null;
-    return node;
+  private nullifyParents(nodes: Location[]): void {
+    for (const node of nodes) {
+      node.parent = null;
+      if (node.children?.length) this.nullifyParents(node.children);
+    }
   }
 
   async findById(id: number): Promise<Location> {

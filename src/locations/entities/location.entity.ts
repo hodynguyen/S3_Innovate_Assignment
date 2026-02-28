@@ -8,7 +8,9 @@ import {
   CreateDateColumn,
   UpdateDateColumn,
   Index,
+  OneToMany,
 } from 'typeorm';
+import { LocationDepartment } from './location-department.entity';
 
 @Entity('location')
 @Tree('closure-table')
@@ -26,20 +28,14 @@ export class Location {
   @Column()
   building: string;
 
-  @Column({ nullable: true, type: 'varchar' })
-  department: string | null;
-
-  @Column({ nullable: true, type: 'int' })
-  capacity: number | null;
-
-  @Column({ nullable: true, type: 'varchar' })
-  openTime: string | null;
-
   @TreeParent({ onDelete: 'CASCADE' })
   parent: Location | null;
 
   @TreeChildren({ cascade: true })
   children: Location[];
+
+  @OneToMany(() => LocationDepartment, (dc) => dc.location)
+  departmentConfigs: LocationDepartment[];
 
   @CreateDateColumn()
   createdAt: Date;

@@ -20,6 +20,7 @@ import {
 import { LocationsService } from './locations.service';
 import { CreateLocationDto } from './dto/create-location.dto';
 import { UpdateLocationDto } from './dto/update-location.dto';
+import { CreateLocationDepartmentDto } from './dto/create-location-department.dto';
 
 @ApiTags('locations')
 @Controller('locations')
@@ -46,6 +47,52 @@ export class LocationsController {
   findAll() {
     this.logger.log('GET /locations');
     return this.locationsService.findTree();
+  }
+
+  @Get(':locationNumber/departments')
+  @ApiOperation({ summary: 'Get all department configs for a location' })
+  @ApiParam({ name: 'locationNumber', example: 'A-01-01' })
+  @ApiResponse({ status: 200, description: 'List of department configs' })
+  @ApiResponse({ status: 404, description: 'Location not found' })
+  findDepartments(@Param('locationNumber') locationNumber: string) {
+    this.logger.log(`GET /locations/${locationNumber}/departments`);
+    return this.locationsService.findDepartments(locationNumber);
+  }
+
+  @Post(':locationNumber/departments')
+  @ApiOperation({ summary: 'Add a department config to a location' })
+  @ApiParam({ name: 'locationNumber', example: 'A-01-01' })
+  @ApiCreatedResponse({ description: 'Department config added successfully' })
+  @ApiResponse({ status: 404, description: 'Location not found' })
+  @ApiResponse({
+    status: 409,
+    description: 'Department already registered for this location',
+  })
+  addDepartment(
+    @Param('locationNumber') locationNumber: string,
+    @Body() dto: CreateLocationDepartmentDto,
+  ) {
+    this.logger.log(
+      `POST /locations/${locationNumber}/departments - ${dto.department}`,
+    );
+    return this.locationsService.addDepartment(locationNumber, dto);
+  }
+
+  @Delete(':locationNumber/departments/:department')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({ summary: 'Remove a department config from a location' })
+  @ApiParam({ name: 'locationNumber', example: 'A-01-01' })
+  @ApiParam({ name: 'department', example: 'EFM' })
+  @ApiResponse({ status: 204, description: 'Department config removed' })
+  @ApiResponse({ status: 404, description: 'Location or department config not found' })
+  removeDepartment(
+    @Param('locationNumber') locationNumber: string,
+    @Param('department') department: string,
+  ) {
+    this.logger.log(
+      `DELETE /locations/${locationNumber}/departments/${department}`,
+    );
+    return this.locationsService.removeDepartment(locationNumber, department);
   }
 
   @Get(':locationNumber')

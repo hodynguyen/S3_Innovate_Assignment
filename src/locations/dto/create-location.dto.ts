@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsString, IsNotEmpty, IsOptional, IsInt, Min } from 'class-validator';
+import { IsString, IsNotEmpty, IsOptional, IsInt } from 'class-validator';
 
 export class CreateLocationDto {
   @ApiProperty({
@@ -19,25 +19,6 @@ export class CreateLocationDto {
   @IsString()
   @IsNotEmpty()
   building: string;
-
-  @ApiPropertyOptional({ example: 'EFM', description: 'Owning department' })
-  @IsString()
-  @IsOptional()
-  department?: string;
-
-  @ApiPropertyOptional({ example: 10, description: 'Max occupancy' })
-  @IsInt()
-  @Min(1)
-  @IsOptional()
-  capacity?: number;
-
-  @ApiPropertyOptional({
-    example: 'Mon to Fri (9AM to 6PM)',
-    description: 'Open time window. Use "Always open" for 24/7.',
-  })
-  @IsString()
-  @IsOptional()
-  openTime?: string;
 
   @ApiPropertyOptional({
     example: 1,

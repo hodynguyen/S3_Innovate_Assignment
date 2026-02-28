@@ -7,6 +7,7 @@
 import 'reflect-metadata';
 import { DataSource } from 'typeorm';
 import { Location } from '../locations/entities/location.entity';
+import { LocationDepartment } from '../locations/entities/location-department.entity';
 import { config } from 'dotenv';
 
 config(); // load .env
@@ -18,18 +19,22 @@ const AppDataSource = new DataSource({
   username: process.env.DB_USER ?? 'postgres',
   password: process.env.DB_PASS ?? 'password',
   database: process.env.DB_NAME ?? 's3_innovate',
-  entities: [Location],
+  entities: [Location, LocationDepartment],
   synchronize: true,
 });
+
+interface DepartmentConfigSeed {
+  department: string;
+  capacity: number;
+  openTime?: string;
+}
 
 interface LocationSeed {
   locationNumber: string;
   locationName: string;
   building: string;
   parentNumber?: string;
-  department?: string;
-  capacity?: number;
-  openTime?: string;
+  departmentConfigs?: DepartmentConfigSeed[];
 }
 
 const SEED_DATA: LocationSeed[] = [
@@ -60,18 +65,18 @@ const SEED_DATA: LocationSeed[] = [
     locationName: 'Meeting Room 1',
     building: 'A',
     parentNumber: 'A-01',
-    department: 'EFM',
-    capacity: 10,
-    openTime: 'Mon to Fri (9AM to 6PM)',
+    departmentConfigs: [
+      { department: 'EFM', capacity: 10, openTime: 'Mon to Fri (9AM to 6PM)' },
+    ],
   },
   {
     locationNumber: 'A-01-02',
     locationName: 'Meeting Room 2',
     building: 'A',
     parentNumber: 'A-01',
-    department: 'FSS',
-    capacity: 50,
-    openTime: 'Mon to Fri (9AM to 6PM)',
+    departmentConfigs: [
+      { department: 'FSS', capacity: 50, openTime: 'Mon to Fri (9AM to 6PM)' },
+    ],
   },
 
   // Sub-rooms under A-01-01
@@ -123,44 +128,46 @@ const SEED_DATA: LocationSeed[] = [
     locationName: 'Utility Room',
     building: 'B',
     parentNumber: 'B-05',
-    department: 'ASS',
-    capacity: 30,
-    openTime: 'Always open',
+    departmentConfigs: [
+      { department: 'ASS', capacity: 30, openTime: 'Always open' },
+    ],
   },
   {
     locationNumber: 'B-05-12',
     locationName: 'Sanitary Room',
     building: 'B',
     parentNumber: 'B-05',
-    department: 'EFM',
-    capacity: 10,
-    openTime: 'Mon to Fri (9AM to 6PM)',
+    departmentConfigs: [
+      { department: 'EFM', capacity: 10, openTime: 'Mon to Fri (9AM to 6PM)' },
+    ],
   },
   {
     locationNumber: 'B-05-13',
     locationName: 'Meeting Toilet',
     building: 'B',
     parentNumber: 'B-05',
-    department: 'EFM',
-    capacity: 10,
-    openTime: 'Mon to Fri (9AM to 6PM)',
+    departmentConfigs: [
+      { department: 'EFM', capacity: 10, openTime: 'Mon to Fri (9AM to 6PM)' },
+    ],
   },
   {
     locationNumber: 'B-05-14',
     locationName: 'Genset Room',
     building: 'B',
     parentNumber: 'B-05',
-    department: 'ASS',
-    capacity: 100,
-    openTime: 'Mon to Sun (9AM to 6PM)',
+    departmentConfigs: [
+      { department: 'ASS', capacity: 100, openTime: 'Mon to Sun (9AM to 6PM)' },
+    ],
   },
 ];
 
 async function seed() {
   await AppDataSource.initialize();
   const repo = AppDataSource.getTreeRepository(Location);
+  const deptRepo = AppDataSource.getRepository(LocationDepartment);
 
-  console.log('Clearing existing locations...');
+  console.log('Clearing existing data...');
+  await AppDataSource.query('DELETE FROM location_department');
   await AppDataSource.query('DELETE FROM location');
 
   // First pass: create all locations without parents
@@ -170,9 +177,6 @@ async function seed() {
       locationNumber: data.locationNumber,
       locationName: data.locationName,
       building: data.building,
-      department: data.department ?? null,
-      capacity: data.capacity ?? null,
-      openTime: data.openTime ?? null,
     });
     const saved = await repo.save(loc);
     locationMap.set(data.locationNumber, saved);
@@ -195,6 +199,24 @@ async function seed() {
     console.log(
       `Linked: ${data.locationNumber} → parent: ${data.parentNumber}`,
     );
+  }
+
+  // Third pass: insert LocationDepartment rows
+  for (const data of SEED_DATA) {
+    if (!data.departmentConfigs?.length) continue;
+    const loc = locationMap.get(data.locationNumber)!;
+    for (const cfg of data.departmentConfigs) {
+      const deptConfig = deptRepo.create({
+        locationId: loc.id,
+        department: cfg.department,
+        capacity: cfg.capacity,
+        openTime: cfg.openTime ?? null,
+      });
+      await deptRepo.save(deptConfig);
+      console.log(
+        `Dept config: ${data.locationNumber} → ${cfg.department} (cap=${cfg.capacity})`,
+      );
+    }
   }
 
   console.log('\nSeed completed successfully.');

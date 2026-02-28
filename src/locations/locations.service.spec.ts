@@ -4,6 +4,7 @@ import { NotFoundException, ConflictException } from '@nestjs/common';
 import { TreeRepository } from 'typeorm';
 import { LocationsService } from './locations.service';
 import { Location } from './entities/location.entity';
+import { LocationDepartment } from './entities/location-department.entity';
 import { CreateLocationDto } from './dto/create-location.dto';
 import { UpdateLocationDto } from './dto/update-location.dto';
 
@@ -17,11 +18,9 @@ function makeLocation(overrides: Partial<Location> = {}): Location {
     locationNumber: 'A-01-01',
     locationName: 'Meeting Room 1',
     building: 'A',
-    department: 'EFM',
-    capacity: 10,
-    openTime: 'Mon to Fri (9AM to 6PM)',
     parent: null,
     children: [],
+    departmentConfigs: [],
     createdAt: new Date(),
     updatedAt: new Date(),
     ...overrides,
@@ -35,9 +34,6 @@ function makeCreateDto(
     locationNumber: 'A-01-01',
     locationName: 'Meeting Room 1',
     building: 'A',
-    department: 'EFM',
-    capacity: 10,
-    openTime: 'Mon to Fri (9AM to 6PM)',
     ...overrides,
   };
 }
@@ -63,6 +59,16 @@ function makeLocationTreeRepo() {
   };
 }
 
+function makeLocationDepartmentRepo() {
+  return {
+    findOne: jest.fn(),
+    find: jest.fn(),
+    create: jest.fn(),
+    save: jest.fn(),
+    remove: jest.fn(),
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
@@ -71,10 +77,12 @@ describe('LocationsService', () => {
   let service: LocationsService;
   let locationRepo: ReturnType<typeof makeLocationRepo>;
   let treeRepo: ReturnType<typeof makeLocationTreeRepo>;
+  let locationDepartmentRepo: ReturnType<typeof makeLocationDepartmentRepo>;
 
   beforeEach(async () => {
     locationRepo = makeLocationRepo();
     treeRepo = makeLocationTreeRepo();
+    locationDepartmentRepo = makeLocationDepartmentRepo();
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -86,6 +94,10 @@ describe('LocationsService', () => {
         {
           provide: 'LOCATION_TREE_REPO',
           useValue: treeRepo,
+        },
+        {
+          provide: getRepositoryToken(LocationDepartment),
+          useValue: locationDepartmentRepo,
         },
       ],
     }).compile();
@@ -157,7 +169,7 @@ describe('LocationsService', () => {
       expect(locationRepo.save).toHaveBeenCalledWith(childLocation);
     });
 
-    it('should set optional fields to null when not provided in dto', async () => {
+    it('should not pass department, capacity, or openTime when creating a location', async () => {
       locationRepo.findOne.mockResolvedValueOnce(null);
       const created: Partial<Location> = {};
       locationRepo.create.mockImplementation((data) => {
@@ -166,18 +178,12 @@ describe('LocationsService', () => {
       });
       locationRepo.save.mockResolvedValue(created as Location);
 
-      const dto = makeCreateDto({
-        department: undefined,
-        capacity: undefined,
-        openTime: undefined,
-      });
-      await service.create(dto);
+      await service.create(makeCreateDto());
 
-      expect(created).toMatchObject({
-        department: null,
-        capacity: null,
-        openTime: null,
-      });
+      // These fields were removed from the entity and should not appear in create payload
+      expect(created).not.toHaveProperty('department');
+      expect(created).not.toHaveProperty('capacity');
+      expect(created).not.toHaveProperty('openTime');
     });
   });
 
@@ -265,7 +271,7 @@ describe('LocationsService', () => {
       expect(error.message).toMatch(/'Z-99-99' not found/i);
     });
 
-    it('should return the node with its children when location exists', async () => {
+    it('should return the node with its children and departmentConfigs when location exists', async () => {
       const location = makeLocation({ id: 1 });
       const child = makeLocation({
         id: 2,
@@ -278,9 +284,19 @@ describe('LocationsService', () => {
         parent: null,
         children: [child],
       });
+      const deptConfigs = [
+        {
+          id: 1,
+          locationId: 1,
+          department: 'EFM',
+          capacity: 10,
+          openTime: 'Mon to Fri (9AM to 6PM)',
+        } as LocationDepartment,
+      ];
 
       locationRepo.findOne.mockResolvedValue(location);
       treeRepo.findDescendantsTree.mockResolvedValue(locationWithChildren);
+      locationDepartmentRepo.find.mockResolvedValue(deptConfigs);
 
       const result = await service.findOne('A-01-01');
 
@@ -288,6 +304,7 @@ describe('LocationsService', () => {
       expect(result.parent).toBeNull();
       expect(result.children).toHaveLength(1);
       expect(result.children[0]).toMatchObject({ id: 2 });
+      expect(result.departmentConfigs).toBe(deptConfigs);
     });
 
     it('should nullify the parent on the tree root returned by findDescendantsTree', async () => {
@@ -303,6 +320,7 @@ describe('LocationsService', () => {
 
       locationRepo.findOne.mockResolvedValue(location);
       treeRepo.findDescendantsTree.mockResolvedValue(treeWithPopulatedParent);
+      locationDepartmentRepo.find.mockResolvedValue([]);
 
       const result = await service.findOne('A-01-01');
 

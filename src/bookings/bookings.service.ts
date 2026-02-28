@@ -7,6 +7,7 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Booking } from './entities/booking.entity';
+import { LocationDepartment } from '../locations/entities/location-department.entity';
 import { CreateBookingDto } from './dto/create-booking.dto';
 import { LocationsService } from '../locations/locations.service';
 import { isWithinOpenTime } from '../common/utils/open-time.parser';
@@ -18,6 +19,8 @@ export class BookingsService {
   constructor(
     @InjectRepository(Booking)
     private readonly bookingRepo: Repository<Booking>,
+    @InjectRepository(LocationDepartment)
+    private readonly locationDepartmentRepo: Repository<LocationDepartment>,
     private readonly locationsService: LocationsService,
   ) {}
 
@@ -35,37 +38,33 @@ export class BookingsService {
       );
     }
 
-    // Rule 1: location must be bookable (has department + capacity)
-    if (!location.department || location.capacity === null) {
+    // Look up the LocationDepartment row for this (location, department) pair
+    const deptConfig = await this.locationDepartmentRepo.findOne({
+      where: { locationId: location.id, department: dto.department },
+    });
+    if (!deptConfig) {
       throw new BadRequestException(
-        `Location '${dto.locationNumber}' is not bookable (no department or capacity defined)`,
+        `Location '${dto.locationNumber}' does not serve department '${dto.department}'`,
       );
     }
 
-    // Rule 2: Department matching
-    if (location.department !== dto.department) {
+    // Capacity check: attendees must not exceed department-specific capacity
+    if (dto.attendees > deptConfig.capacity) {
       throw new BadRequestException(
-        `Department mismatch: location '${dto.locationNumber}' is assigned to '${location.department}', got '${dto.department}'`,
+        `Capacity exceeded: department '${dto.department}' at '${dto.locationNumber}' holds ${deptConfig.capacity}, requested ${dto.attendees}`,
       );
     }
 
-    // Rule 3: Capacity check
-    if (dto.attendees > location.capacity) {
-      throw new BadRequestException(
-        `Capacity exceeded: location '${dto.locationNumber}' holds ${location.capacity} people, requested ${dto.attendees}`,
-      );
-    }
-
-    // Rule 4: Open time validation
-    if (location.openTime) {
-      if (!isWithinOpenTime(location.openTime, startDate)) {
+    // Open time validation: both start and end must fall within the open window
+    if (deptConfig.openTime) {
+      if (!isWithinOpenTime(deptConfig.openTime, startDate)) {
         throw new BadRequestException(
-          `Booking start time is outside open hours for '${dto.locationNumber}' (${location.openTime})`,
+          `Booking start time is outside open hours for '${dto.locationNumber}' / '${dto.department}' (${deptConfig.openTime})`,
         );
       }
-      if (!isWithinOpenTime(location.openTime, endDate)) {
+      if (!isWithinOpenTime(deptConfig.openTime, endDate)) {
         throw new BadRequestException(
-          `Booking end time is outside open hours for '${dto.locationNumber}' (${location.openTime})`,
+          `Booking end time is outside open hours for '${dto.locationNumber}' / '${dto.department}' (${deptConfig.openTime})`,
         );
       }
     }

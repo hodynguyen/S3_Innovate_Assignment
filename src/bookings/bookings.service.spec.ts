@@ -4,6 +4,7 @@ import { BadRequestException } from '@nestjs/common';
 import { Repository } from 'typeorm';
 import { BookingsService } from './bookings.service';
 import { Booking } from './entities/booking.entity';
+import { LocationDepartment } from '../locations/entities/location-department.entity';
 import { LocationsService } from '../locations/locations.service';
 import { Location } from '../locations/entities/location.entity';
 import { CreateBookingDto } from './dto/create-booking.dto';
@@ -33,15 +34,27 @@ function makeLocation(overrides: Partial<Location> = {}): Location {
     locationNumber: 'A-01-01',
     locationName: 'Meeting Room 1',
     building: 'A',
-    department: 'EFM',
-    capacity: 10,
-    openTime: 'Mon to Fri (9AM to 6PM)',
     parent: null,
     children: [],
+    departmentConfigs: [],
     createdAt: new Date(),
     updatedAt: new Date(),
     ...overrides,
   } as Location;
+}
+
+function makeDeptConfig(
+  overrides: Partial<LocationDepartment> = {},
+): LocationDepartment {
+  return {
+    id: 1,
+    locationId: 1,
+    location: makeLocation(),
+    department: 'EFM',
+    capacity: 10,
+    openTime: 'Mon to Fri (9AM to 6PM)',
+    ...overrides,
+  } as LocationDepartment;
 }
 
 function makeDto(overrides: Partial<CreateBookingDto> = {}): CreateBookingDto {
@@ -62,6 +75,7 @@ function makeDto(overrides: Partial<CreateBookingDto> = {}): CreateBookingDto {
 describe('BookingsService', () => {
   let service: BookingsService;
   let bookingRepo: jest.Mocked<Repository<Booking>>;
+  let locationDepartmentRepo: jest.Mocked<Repository<LocationDepartment>>;
   let locationsService: jest.Mocked<LocationsService>;
 
   beforeEach(async () => {
@@ -78,6 +92,12 @@ describe('BookingsService', () => {
           },
         },
         {
+          provide: getRepositoryToken(LocationDepartment),
+          useValue: {
+            findOne: jest.fn(),
+          },
+        },
+        {
           provide: LocationsService,
           useValue: {
             findOne: jest.fn(),
@@ -88,6 +108,7 @@ describe('BookingsService', () => {
 
     service = module.get<BookingsService>(BookingsService);
     bookingRepo = module.get(getRepositoryToken(Booking));
+    locationDepartmentRepo = module.get(getRepositoryToken(LocationDepartment));
     locationsService = module.get(LocationsService);
 
     // Reset the open-time parser mock before each test
@@ -101,6 +122,7 @@ describe('BookingsService', () => {
 
     it('should throw BadRequestException when startTime equals endTime', async () => {
       locationsService.findOne.mockResolvedValue(makeLocation());
+      locationDepartmentRepo.findOne.mockResolvedValue(makeDeptConfig());
 
       const dto = makeDto({
         startTime: '2026-03-10T09:00:00.000Z',
@@ -114,6 +136,7 @@ describe('BookingsService', () => {
 
     it('should throw BadRequestException when startTime is after endTime', async () => {
       locationsService.findOne.mockResolvedValue(makeLocation());
+      locationDepartmentRepo.findOne.mockResolvedValue(makeDeptConfig());
 
       const dto = makeDto({
         startTime: '2026-03-10T11:00:00.000Z',
@@ -126,65 +149,40 @@ describe('BookingsService', () => {
     });
 
     // -----------------------------------------------------------------------
-    // Rule 1: Location must be bookable
+    // Rule: Location must serve the requested department (deptConfig lookup)
     // -----------------------------------------------------------------------
 
-    it('should throw BadRequestException when location has no department (non-bookable)', async () => {
-      locationsService.findOne.mockResolvedValue(
-        makeLocation({ department: null }),
-      );
+    it('should throw BadRequestException when no LocationDepartment row exists for the requested department', async () => {
+      locationsService.findOne.mockResolvedValue(makeLocation());
+      locationDepartmentRepo.findOne.mockResolvedValue(null); // no deptConfig found
 
       await expect(service.create(makeDto())).rejects.toThrow(
         BadRequestException,
       );
-      await expect(service.create(makeDto())).rejects.toThrow(/not bookable/i);
-    });
-
-    it('should throw BadRequestException when location has no capacity (non-bookable)', async () => {
-      locationsService.findOne.mockResolvedValue(
-        makeLocation({ capacity: null }),
-      );
-
       await expect(service.create(makeDto())).rejects.toThrow(
-        BadRequestException,
-      );
-      await expect(service.create(makeDto())).rejects.toThrow(/not bookable/i);
-    });
-
-    it('should throw BadRequestException when location has neither department nor capacity', async () => {
-      locationsService.findOne.mockResolvedValue(
-        makeLocation({ department: null, capacity: null }),
-      );
-
-      await expect(service.create(makeDto())).rejects.toThrow(
-        BadRequestException,
+        /does not serve department/i,
       );
     });
 
-    // -----------------------------------------------------------------------
-    // Rule 2: Department matching
-    // -----------------------------------------------------------------------
+    it('should include locationNumber and department in the error message when deptConfig is not found', async () => {
+      locationsService.findOne.mockResolvedValue(makeLocation());
+      locationDepartmentRepo.findOne.mockResolvedValue(null);
 
-    it('should throw BadRequestException when booking department does not match location department', async () => {
-      locationsService.findOne.mockResolvedValue(
-        makeLocation({ department: 'FSS' }),
-      );
-
-      await expect(
-        service.create(makeDto({ department: 'EFM' })),
-      ).rejects.toThrow(BadRequestException);
-      await expect(
-        service.create(makeDto({ department: 'EFM' })),
-      ).rejects.toThrow(/department mismatch/i);
+      const dto = makeDto({ department: 'HR' });
+      const error = await service.create(dto).catch((e) => e);
+      expect(error).toBeInstanceOf(BadRequestException);
+      expect(error.message).toContain('A-01-01');
+      expect(error.message).toContain('HR');
     });
 
     // -----------------------------------------------------------------------
-    // Rule 3: Capacity check
+    // Rule: Capacity check (uses deptConfig.capacity)
     // -----------------------------------------------------------------------
 
-    it('should throw BadRequestException when attendees exceed capacity', async () => {
-      locationsService.findOne.mockResolvedValue(
-        makeLocation({ capacity: 10 }),
+    it('should throw BadRequestException when attendees exceed deptConfig capacity', async () => {
+      locationsService.findOne.mockResolvedValue(makeLocation());
+      locationDepartmentRepo.findOne.mockResolvedValue(
+        makeDeptConfig({ capacity: 10 }),
       );
 
       await expect(service.create(makeDto({ attendees: 11 }))).rejects.toThrow(
@@ -195,9 +193,11 @@ describe('BookingsService', () => {
       );
     });
 
-    it('should NOT throw for attendees exactly equal to capacity', async () => {
-      const location = makeLocation({ capacity: 10 });
-      locationsService.findOne.mockResolvedValue(location);
+    it('should NOT throw for attendees exactly equal to deptConfig capacity', async () => {
+      locationsService.findOne.mockResolvedValue(makeLocation());
+      locationDepartmentRepo.findOne.mockResolvedValue(
+        makeDeptConfig({ capacity: 10 }),
+      );
       mockIsWithinOpenTime.mockReturnValue(true);
 
       const savedBooking = { id: 1 } as Booking;
@@ -209,11 +209,12 @@ describe('BookingsService', () => {
     });
 
     // -----------------------------------------------------------------------
-    // Rule 4: Open time validation
+    // Rule: Open time validation (uses deptConfig.openTime)
     // -----------------------------------------------------------------------
 
-    it('should throw BadRequestException when startTime is outside openTime window', async () => {
+    it('should throw BadRequestException when startTime is outside deptConfig openTime window', async () => {
       locationsService.findOne.mockResolvedValue(makeLocation());
+      locationDepartmentRepo.findOne.mockResolvedValue(makeDeptConfig());
       // First call (startTime) → false; second call (endTime) would not be reached
       mockIsWithinOpenTime.mockReturnValueOnce(false);
 
@@ -225,8 +226,9 @@ describe('BookingsService', () => {
       );
     });
 
-    it('should throw BadRequestException when endTime is outside openTime window', async () => {
+    it('should throw BadRequestException when endTime is outside deptConfig openTime window', async () => {
       locationsService.findOne.mockResolvedValue(makeLocation());
+      locationDepartmentRepo.findOne.mockResolvedValue(makeDeptConfig());
       // startTime passes, endTime fails — set up the two-call sequence once
       mockIsWithinOpenTime
         .mockReturnValueOnce(true) // startTime OK
@@ -237,9 +239,11 @@ describe('BookingsService', () => {
       expect(error.message).toMatch(/end time is outside open hours/i);
     });
 
-    it('should NOT check openTime when location has no openTime field (null)', async () => {
-      const location = makeLocation({ openTime: null });
-      locationsService.findOne.mockResolvedValue(location);
+    it('should NOT check openTime when deptConfig.openTime is null', async () => {
+      locationsService.findOne.mockResolvedValue(makeLocation());
+      locationDepartmentRepo.findOne.mockResolvedValue(
+        makeDeptConfig({ openTime: null }),
+      );
 
       const savedBooking = { id: 2 } as Booking;
       bookingRepo.create.mockReturnValue(savedBooking);
@@ -247,7 +251,7 @@ describe('BookingsService', () => {
 
       const result = await service.create(makeDto());
       expect(result).toBe(savedBooking);
-      // isWithinOpenTime must NOT have been called because openTime is falsy
+      // isWithinOpenTime must NOT have been called because openTime is null
       expect(mockIsWithinOpenTime).not.toHaveBeenCalled();
     });
 
@@ -258,6 +262,7 @@ describe('BookingsService', () => {
     it('should create and return a booking when all validations pass', async () => {
       const location = makeLocation();
       locationsService.findOne.mockResolvedValue(location);
+      locationDepartmentRepo.findOne.mockResolvedValue(makeDeptConfig());
       mockIsWithinOpenTime.mockReturnValue(true);
 
       const savedBooking = {
@@ -285,8 +290,8 @@ describe('BookingsService', () => {
     });
 
     it('should pass startTime and endTime as Date objects to bookingRepo.create()', async () => {
-      const location = makeLocation();
-      locationsService.findOne.mockResolvedValue(location);
+      locationsService.findOne.mockResolvedValue(makeLocation());
+      locationDepartmentRepo.findOne.mockResolvedValue(makeDeptConfig());
       mockIsWithinOpenTime.mockReturnValue(true);
 
       const savedBooking = { id: 1 } as Booking;
@@ -306,9 +311,11 @@ describe('BookingsService', () => {
     // "Always open" location
     // -----------------------------------------------------------------------
 
-    it('should allow booking at any time for an "Always open" location', async () => {
-      const location = makeLocation({ openTime: 'Always open' });
-      locationsService.findOne.mockResolvedValue(location);
+    it('should allow booking at any time for a deptConfig with "Always open" openTime', async () => {
+      locationsService.findOne.mockResolvedValue(makeLocation());
+      locationDepartmentRepo.findOne.mockResolvedValue(
+        makeDeptConfig({ openTime: 'Always open' }),
+      );
 
       // When openTime is "Always open", the real isWithinOpenTime returns true.
       // We mock it to return true here to reflect that behaviour.

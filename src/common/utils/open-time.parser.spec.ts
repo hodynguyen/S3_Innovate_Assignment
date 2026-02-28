@@ -1,22 +1,23 @@
 import { parseOpenTime, isWithinOpenTime } from './open-time.parser';
 
 /**
- * Helper: build a Date with a specific local day-of-week and local hour/minute.
+ * Helper: build a Date with a specific UTC day-of-week and UTC hour/minute.
  *
- * Uses a known reference Monday (2026-03-02 00:00 local) and offsets from it
- * so that day arithmetic is expressed cleanly without timezone pitfalls.
+ * Uses a known reference Monday (2026-03-02 00:00 UTC) and offsets from it
+ * so that day arithmetic is expressed cleanly and timezone-independently.
+ * The parser uses getUTC* methods, so constructing dates in UTC here ensures
+ * tests behave identically on any server regardless of its local timezone.
  *
- * JS getDay() mapping:
+ * JS getUTCDay() mapping:
  *   0=Sun, 1=Mon, 2=Tue, 3=Wed, 4=Thu, 5=Fri, 6=Sat
  */
 function makeLocalDate(dayOfWeek: number, hour: number, minute = 0): Date {
-  // 2026-03-02 is a Monday (getDay() === 1) in any local timezone.
-  // We offset by (dayOfWeek - 1) days so the resulting date has the target day.
-  const base = new Date(2026, 2, 2, 0, 0, 0, 0); // Mon 2026-03-02 00:00 local
+  // 2026-03-02 is a Monday (getUTCDay() === 1).
+  // We offset by (dayOfWeek - 1) days so the resulting UTC date has the target day.
+  const BASE_UTC_MS = Date.UTC(2026, 2, 2, 0, 0, 0, 0); // Mon 2026-03-02 00:00 UTC
   const offsetDays = (dayOfWeek - 1 + 7) % 7;
-  base.setDate(base.getDate() + offsetDays);
-  base.setHours(hour, minute, 0, 0);
-  return base;
+  const offsetHours = offsetDays * 24 + hour;
+  return new Date(BASE_UTC_MS + (offsetHours * 60 + minute) * 60 * 1000);
 }
 
 // Convenience constants for day-of-week values

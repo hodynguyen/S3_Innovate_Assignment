@@ -94,6 +94,32 @@ describe('BookingsService', () => {
 
   describe('create()', () => {
     // -----------------------------------------------------------------------
+    // Temporal sanity: startTime must be before endTime
+    // -----------------------------------------------------------------------
+
+    it('should throw BadRequestException when startTime equals endTime', async () => {
+      locationsService.findOne.mockResolvedValue(makeLocation());
+
+      const dto = makeDto({
+        startTime: '2026-03-10T09:00:00.000Z',
+        endTime: '2026-03-10T09:00:00.000Z',
+      });
+      await expect(service.create(dto)).rejects.toThrow(BadRequestException);
+      await expect(service.create(dto)).rejects.toThrow(/startTime must be before endTime/i);
+    });
+
+    it('should throw BadRequestException when startTime is after endTime', async () => {
+      locationsService.findOne.mockResolvedValue(makeLocation());
+
+      const dto = makeDto({
+        startTime: '2026-03-10T11:00:00.000Z',
+        endTime: '2026-03-10T09:00:00.000Z',
+      });
+      await expect(service.create(dto)).rejects.toThrow(BadRequestException);
+      await expect(service.create(dto)).rejects.toThrow(/startTime must be before endTime/i);
+    });
+
+    // -----------------------------------------------------------------------
     // Rule 1: Location must be bookable
     // -----------------------------------------------------------------------
 

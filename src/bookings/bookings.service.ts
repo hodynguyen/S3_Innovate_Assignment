@@ -26,6 +26,15 @@ export class BookingsService {
 
     const location = await this.locationsService.findOne(dto.locationNumber);
 
+    // Temporal sanity: startTime must be strictly before endTime
+    const startDate = new Date(dto.startTime);
+    const endDate = new Date(dto.endTime);
+    if (startDate >= endDate) {
+      throw new BadRequestException(
+        `startTime must be before endTime (got startTime=${dto.startTime}, endTime=${dto.endTime})`,
+      );
+    }
+
     // Rule 1: location must be bookable (has department + capacity)
     if (!location.department || location.capacity === null) {
       throw new BadRequestException(
@@ -49,15 +58,12 @@ export class BookingsService {
 
     // Rule 4: Open time validation
     if (location.openTime) {
-      const start = new Date(dto.startTime);
-      const end = new Date(dto.endTime);
-
-      if (!isWithinOpenTime(location.openTime, start)) {
+      if (!isWithinOpenTime(location.openTime, startDate)) {
         throw new BadRequestException(
           `Booking start time is outside open hours for '${dto.locationNumber}' (${location.openTime})`,
         );
       }
-      if (!isWithinOpenTime(location.openTime, end)) {
+      if (!isWithinOpenTime(location.openTime, endDate)) {
         throw new BadRequestException(
           `Booking end time is outside open hours for '${dto.locationNumber}' (${location.openTime})`,
         );
@@ -68,8 +74,8 @@ export class BookingsService {
       location,
       department: dto.department,
       attendees: dto.attendees,
-      startTime: new Date(dto.startTime),
-      endTime: new Date(dto.endTime),
+      startTime: startDate,
+      endTime: endDate,
     });
 
     const saved = await this.bookingRepo.save(booking);

@@ -88,7 +88,12 @@ export class LocationsService {
       throw new NotFoundException(`Location '${locationNumber}' not found`);
     }
 
-    Object.assign(location, dto);
+    // Only apply fields that were explicitly provided in the PATCH body.
+    // Omitting undefined values prevents overwriting existing fields with NULL.
+    const patch = Object.fromEntries(
+      Object.entries(dto).filter(([, v]) => v !== undefined),
+    );
+    Object.assign(location, patch);
     const updated = await this.locationRepo.save(location);
     this.logger.log(`Location updated: ${updated.locationNumber}`);
     return updated;

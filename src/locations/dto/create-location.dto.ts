@@ -5,7 +5,6 @@ import {
   IsOptional,
   IsInt,
   Min,
-  IsNumber,
 } from 'class-validator';
 
 export class CreateLocationDto {
@@ -47,7 +46,7 @@ export class CreateLocationDto {
     example: 1,
     description: 'ID of the parent location (null for root nodes)',
   })
-  @IsNumber()
+  @IsInt()
   @IsOptional()
   parentId?: number;
 }

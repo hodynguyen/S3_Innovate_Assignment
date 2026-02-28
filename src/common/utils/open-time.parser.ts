@@ -7,6 +7,13 @@
  *   "Mon to Fri (9AM to 6PM)"
  *   "Mon to Sat (9AM to 6PM)"
  *   "Mon to Sun (9AM to 6PM)"
+ *
+ * Timezone convention:
+ *   All datetime comparisons use UTC (getUTC* methods). Clients must submit
+ *   booking times as UTC ISO 8601 strings where the UTC value represents the
+ *   wall-clock time at the building location (i.e. no timezone conversion is
+ *   applied server-side). This guarantees deterministic behaviour regardless
+ *   of the server's local timezone.
  */
 
 const DAY_MAP: Record<string, number> = {
@@ -71,7 +78,8 @@ export function parseOpenTime(openTime: string): ParsedOpenTime | null {
 /**
  * Returns true if the given date is within the openTime window.
  * @param openTime  The openTime string from the Location entity
- * @param date      The datetime to check (uses local day + hour)
+ * @param date      The datetime to check — evaluated in UTC (see module-level
+ *                  timezone convention above)
  */
 export function isWithinOpenTime(openTime: string, date: Date): boolean {
   const parsed = parseOpenTime(openTime);
@@ -79,9 +87,9 @@ export function isWithinOpenTime(openTime: string, date: Date): boolean {
   // "Always open" → always valid
   if (parsed === null) return true;
 
-  const day = date.getDay(); // 0=Sun … 6=Sat
-  const hour = date.getHours();
-  const minutes = date.getMinutes();
+  const day = date.getUTCDay(); // 0=Sun … 6=Sat
+  const hour = date.getUTCHours();
+  const minutes = date.getUTCMinutes();
 
   // Build inclusive day range (handles Mon→Fri, Mon→Sat, Mon→Sun)
   const allowedDays = new Set<number>();

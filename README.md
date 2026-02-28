@@ -464,6 +464,7 @@ s3-innovate-assignment/
 │   │   ├── locations.module.ts              # Module definition, TypeORM entity registration
 │   │   ├── locations.controller.ts          # POST/GET/PATCH/DELETE /locations
 │   │   ├── locations.service.ts             # Business logic + TreeRepository operations
+│   │   ├── locations.service.spec.ts        # Unit tests for LocationsService
 │   │   ├── entities/
 │   │   │   └── location.entity.ts           # TypeORM entity — adjacency-list tree
 │   │   └── dto/
@@ -474,6 +475,7 @@ s3-innovate-assignment/
 │   │   ├── bookings.module.ts               # Module definition, injects LocationsModule
 │   │   ├── bookings.controller.ts           # POST/GET /bookings, GET /bookings/:id
 │   │   ├── bookings.service.ts              # Booking creation with 4-step rule enforcement
+│   │   ├── bookings.service.spec.ts         # Unit tests for BookingsService
 │   │   ├── entities/
 │   │   │   └── booking.entity.ts            # TypeORM entity — ManyToOne to Location
 │   │   └── dto/
@@ -486,13 +488,8 @@ s3-innovate-assignment/
 │   │       ├── open-time.parser.ts          # Parses openTime strings and checks datetime windows
 │   │       └── open-time.parser.spec.ts     # Unit tests for the parser
 │   │
-│   ├── database/
-│   │   └── seed.ts                          # Standalone seed script (npm run seed)
-│   │
-│   ├── locations/
-│   │   └── locations.service.spec.ts        # Unit tests for LocationsService
-│   └── bookings/
-│       └── bookings.service.spec.ts         # Unit tests for BookingsService
+│   └── database/
+│       └── seed.ts                          # Standalone seed script (npm run seed)
 │
 ├── docker-compose.yml                       # PostgreSQL 16 container
 ├── .env.example                             # Environment variable template

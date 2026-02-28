@@ -46,11 +46,10 @@ function makeCreateDto(overrides: Partial<CreateLocationDto> = {}): CreateLocati
 function makeTreeRepo() {
   return {
     findOne: jest.fn(),
+    find: jest.fn(),
     create: jest.fn(),
     save: jest.fn(),
     remove: jest.fn(),
-    findTrees: jest.fn(),
-    findDescendantsTree: jest.fn(),
   };
 }
 
@@ -174,17 +173,22 @@ describe('LocationsService', () => {
       expect(error.message).toMatch(/'Z-99-99' not found/i);
     });
 
-    it('should return the descendants tree when location exists', async () => {
-      const location = makeLocation();
-      const treeResult = makeLocation({ children: [] });
+    it('should return the node with its children when location exists', async () => {
+      const location = makeLocation({ id: 1 });
+      const child = makeLocation({
+        id: 2,
+        locationNumber: 'A-01-01-M1',
+        parent: location,
+      });
 
       locationRepo.findOne.mockResolvedValue(location);
-      locationRepo.findDescendantsTree.mockResolvedValue(treeResult);
+      locationRepo.find.mockResolvedValue([location, child]);
 
       const result = await service.findOne('A-01-01');
 
-      expect(result).toBe(treeResult);
-      expect(locationRepo.findDescendantsTree).toHaveBeenCalledWith(location);
+      expect(result).toMatchObject({ id: 1, locationNumber: 'A-01-01' });
+      expect(result.children).toHaveLength(1);
+      expect(result.children[0]).toMatchObject({ id: 2 });
     });
   });
 

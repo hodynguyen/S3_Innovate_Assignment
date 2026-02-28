@@ -5,7 +5,7 @@ import {
   Logger,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { TreeRepository } from 'typeorm';
+import { Repository } from 'typeorm';
 import { Location } from './entities/location.entity';
 import { CreateLocationDto } from './dto/create-location.dto';
 import { UpdateLocationDto } from './dto/update-location.dto';
@@ -16,7 +16,7 @@ export class LocationsService {
 
   constructor(
     @InjectRepository(Location)
-    private readonly locationRepo: TreeRepository<Location>,
+    private readonly locationRepo: Repository<Location>,
   ) {}
 
   async create(dto: CreateLocationDto): Promise<Location> {
@@ -57,7 +57,19 @@ export class LocationsService {
 
   async findTree(): Promise<Location[]> {
     this.logger.log('Fetching full location tree');
-    return this.locationRepo.findTrees();
+    const all = await this.locationRepo.find({ relations: ['parent'] });
+    const map = new Map(all.map((l) => [l.id, l]));
+    for (const loc of all) loc.children = [];
+    const roots: Location[] = [];
+    for (const loc of all) {
+      if (loc.parent) {
+        map.get(loc.parent.id)?.children.push(loc);
+        loc.parent = null;
+      } else {
+        roots.push(loc);
+      }
+    }
+    return roots;
   }
 
   async findOne(locationNumber: string): Promise<Location> {
@@ -67,8 +79,17 @@ export class LocationsService {
     if (!location) {
       throw new NotFoundException(`Location '${locationNumber}' not found`);
     }
-    const tree = await this.locationRepo.findDescendantsTree(location);
-    return tree;
+    const all = await this.locationRepo.find({ relations: ['parent'] });
+    const node = all.find((l) => l.id === location.id)!;
+    return this.buildSubtree(all, node);
+  }
+
+  private buildSubtree(all: Location[], node: Location): Location {
+    node.children = all
+      .filter((l) => l.parent?.id === node.id)
+      .map((l) => this.buildSubtree(all, l));
+    node.parent = null;
+    return node;
   }
 
   async findById(id: number): Promise<Location> {

@@ -1,0 +1,36 @@
+# compiled output
+/dist
+/node_modules
+
+# environment
+.env
+.env.local
+.env.*.local
+
+# logs
+logs
+*.log
+npm-debug.log*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea
+.vscode
+*.swp
+*.swo
+
+# test coverage
+/coverage
+
+# TypeORM migrations temp
+*.js.map
+
+# Personal / workflow files — not part of the project submission
+.hody/
+CLAUDE.md
+jd.md
+assignment_2026_final.md
+assignment_2026_final.pdf

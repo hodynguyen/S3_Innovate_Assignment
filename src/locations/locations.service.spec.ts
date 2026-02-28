@@ -1,0 +1,253 @@
+import { Test, TestingModule } from '@nestjs/testing';
+import { getRepositoryToken } from '@nestjs/typeorm';
+import { NotFoundException, ConflictException } from '@nestjs/common';
+import { LocationsService } from './locations.service';
+import { Location } from './entities/location.entity';
+import { CreateLocationDto } from './dto/create-location.dto';
+import { UpdateLocationDto } from './dto/update-location.dto';
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+function makeLocation(overrides: Partial<Location> = {}): Location {
+  return {
+    id: 1,
+    locationNumber: 'A-01-01',
+    locationName: 'Meeting Room 1',
+    building: 'A',
+    department: 'EFM',
+    capacity: 10,
+    openTime: 'Mon to Fri (9AM to 6PM)',
+    parent: null,
+    children: [],
+    createdAt: new Date(),
+    updatedAt: new Date(),
+    ...overrides,
+  } as Location;
+}
+
+function makeCreateDto(overrides: Partial<CreateLocationDto> = {}): CreateLocationDto {
+  return {
+    locationNumber: 'A-01-01',
+    locationName: 'Meeting Room 1',
+    building: 'A',
+    department: 'EFM',
+    capacity: 10,
+    openTime: 'Mon to Fri (9AM to 6PM)',
+    ...overrides,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Mock TreeRepository factory
+// ---------------------------------------------------------------------------
+
+function makeTreeRepo() {
+  return {
+    findOne: jest.fn(),
+    create: jest.fn(),
+    save: jest.fn(),
+    remove: jest.fn(),
+    findTrees: jest.fn(),
+    findDescendantsTree: jest.fn(),
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
+
+describe('LocationsService', () => {
+  let service: LocationsService;
+  let locationRepo: ReturnType<typeof makeTreeRepo>;
+
+  beforeEach(async () => {
+    locationRepo = makeTreeRepo();
+
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        LocationsService,
+        {
+          provide: getRepositoryToken(Location),
+          useValue: locationRepo,
+        },
+      ],
+    }).compile();
+
+    service = module.get<LocationsService>(LocationsService);
+  });
+
+  // -------------------------------------------------------------------------
+  // create()
+  // -------------------------------------------------------------------------
+
+  describe('create()', () => {
+    it('should throw ConflictException when locationNumber already exists', async () => {
+      locationRepo.findOne.mockResolvedValueOnce(makeLocation());
+
+      const error = await service.create(makeCreateDto()).catch((e) => e);
+      expect(error).toBeInstanceOf(ConflictException);
+      expect(error.message).toMatch(/already exists/i);
+    });
+
+    it('should throw NotFoundException when parentId is provided but parent does not exist', async () => {
+      // First findOne (uniqueness check) → null (no duplicate)
+      // Second findOne (parent lookup) → null (parent not found)
+      locationRepo.findOne
+        .mockResolvedValueOnce(null)  // uniqueness check passes
+        .mockResolvedValueOnce(null); // parent lookup fails
+
+      locationRepo.create.mockReturnValue(makeLocation());
+
+      const dto = makeCreateDto({ parentId: 999 });
+      const error = await service.create(dto).catch((e) => e);
+      expect(error).toBeInstanceOf(NotFoundException);
+      expect(error.message).toMatch(/parent location/i);
+    });
+
+    it('should save and return the location when no parentId is given', async () => {
+      locationRepo.findOne.mockResolvedValueOnce(null); // no duplicate
+      const newLocation = makeLocation();
+      locationRepo.create.mockReturnValue(newLocation);
+      locationRepo.save.mockResolvedValue(newLocation);
+
+      const result = await service.create(makeCreateDto());
+
+      expect(result).toBe(newLocation);
+      expect(locationRepo.create).toHaveBeenCalledWith(
+        expect.objectContaining({ locationNumber: 'A-01-01' }),
+      );
+      expect(locationRepo.save).toHaveBeenCalledWith(newLocation);
+    });
+
+    it('should attach the parent and save when a valid parentId is given', async () => {
+      const parentLocation = makeLocation({ id: 10, locationNumber: 'A-01' });
+      const childLocation = makeLocation({ id: 2, locationNumber: 'A-01-01' });
+
+      locationRepo.findOne
+        .mockResolvedValueOnce(null)          // uniqueness check passes
+        .mockResolvedValueOnce(parentLocation); // parent found
+
+      locationRepo.create.mockReturnValue(childLocation);
+      locationRepo.save.mockResolvedValue(childLocation);
+
+      const dto = makeCreateDto({ parentId: 10 });
+      const result = await service.create(dto);
+
+      expect(result).toBe(childLocation);
+      // The service should have set location.parent = parentLocation before saving
+      expect(childLocation.parent).toBe(parentLocation);
+      expect(locationRepo.save).toHaveBeenCalledWith(childLocation);
+    });
+
+    it('should set optional fields to null when not provided in dto', async () => {
+      locationRepo.findOne.mockResolvedValueOnce(null);
+      const created: Partial<Location> = {};
+      locationRepo.create.mockImplementation((data) => {
+        Object.assign(created, data);
+        return created as Location;
+      });
+      locationRepo.save.mockResolvedValue(created as Location);
+
+      const dto = makeCreateDto({ department: undefined, capacity: undefined, openTime: undefined });
+      await service.create(dto);
+
+      expect(created).toMatchObject({
+        department: null,
+        capacity: null,
+        openTime: null,
+      });
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // findOne()
+  // -------------------------------------------------------------------------
+
+  describe('findOne()', () => {
+    it('should throw NotFoundException when location does not exist', async () => {
+      locationRepo.findOne.mockResolvedValue(null);
+
+      const error = await service.findOne('Z-99-99').catch((e) => e);
+      expect(error).toBeInstanceOf(NotFoundException);
+      expect(error.message).toMatch(/'Z-99-99' not found/i);
+    });
+
+    it('should return the descendants tree when location exists', async () => {
+      const location = makeLocation();
+      const treeResult = makeLocation({ children: [] });
+
+      locationRepo.findOne.mockResolvedValue(location);
+      locationRepo.findDescendantsTree.mockResolvedValue(treeResult);
+
+      const result = await service.findOne('A-01-01');
+
+      expect(result).toBe(treeResult);
+      expect(locationRepo.findDescendantsTree).toHaveBeenCalledWith(location);
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // update()
+  // -------------------------------------------------------------------------
+
+  describe('update()', () => {
+    it('should throw NotFoundException when location to update does not exist', async () => {
+      locationRepo.findOne.mockResolvedValue(null);
+
+      const dto: UpdateLocationDto = { locationName: 'New Name' };
+      const error = await service.update('Z-99-99', dto).catch((e) => e);
+      expect(error).toBeInstanceOf(NotFoundException);
+      expect(error.message).toMatch(/'Z-99-99' not found/i);
+    });
+
+    it('should apply partial updates and return the saved location', async () => {
+      const existing = makeLocation();
+      locationRepo.findOne.mockResolvedValue(existing);
+
+      const updated = makeLocation({ locationName: 'Renamed Room' });
+      locationRepo.save.mockResolvedValue(updated);
+
+      const dto: UpdateLocationDto = { locationName: 'Renamed Room' };
+      const result = await service.update('A-01-01', dto);
+
+      expect(result).toBe(updated);
+      // Object.assign is used in the service — verify it was called with the dto values
+      expect(existing.locationName).toBe('Renamed Room');
+      expect(locationRepo.save).toHaveBeenCalledWith(existing);
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // remove()
+  // -------------------------------------------------------------------------
+
+  describe('remove()', () => {
+    it('should throw NotFoundException when location to remove does not exist', async () => {
+      locationRepo.findOne.mockResolvedValue(null);
+
+      const error = await service.remove('Z-99-99').catch((e) => e);
+      expect(error).toBeInstanceOf(NotFoundException);
+      expect(error.message).toMatch(/'Z-99-99' not found/i);
+    });
+
+    it('should call locationRepo.remove() with the found location', async () => {
+      const location = makeLocation();
+      locationRepo.findOne.mockResolvedValueOnce(location);
+      locationRepo.remove.mockResolvedValue(undefined);
+
+      await service.remove('A-01-01');
+
+      expect(locationRepo.remove).toHaveBeenCalledWith(location);
+    });
+
+    it('should resolve without returning a value (void) on success', async () => {
+      locationRepo.findOne.mockResolvedValueOnce(makeLocation());
+      locationRepo.remove.mockResolvedValue(undefined);
+
+      const result = await service.remove('A-01-01');
+      expect(result).toBeUndefined();
+    });
+  });
+});

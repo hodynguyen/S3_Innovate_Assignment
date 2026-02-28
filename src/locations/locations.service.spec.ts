@@ -28,7 +28,9 @@ function makeLocation(overrides: Partial<Location> = {}): Location {
   } as Location;
 }
 
-function makeCreateDto(overrides: Partial<CreateLocationDto> = {}): CreateLocationDto {
+function makeCreateDto(
+  overrides: Partial<CreateLocationDto> = {},
+): CreateLocationDto {
   return {
     locationNumber: 'A-01-01',
     locationName: 'Meeting Room 1',
@@ -109,7 +111,7 @@ describe('LocationsService', () => {
       // First findOne (uniqueness check) → null (no duplicate)
       // Second findOne (parent lookup) → null (parent not found)
       locationRepo.findOne
-        .mockResolvedValueOnce(null)  // uniqueness check passes
+        .mockResolvedValueOnce(null) // uniqueness check passes
         .mockResolvedValueOnce(null); // parent lookup fails
 
       locationRepo.create.mockReturnValue(makeLocation());
@@ -140,7 +142,7 @@ describe('LocationsService', () => {
       const childLocation = makeLocation({ id: 2, locationNumber: 'A-01-01' });
 
       locationRepo.findOne
-        .mockResolvedValueOnce(null)          // uniqueness check passes
+        .mockResolvedValueOnce(null) // uniqueness check passes
         .mockResolvedValueOnce(parentLocation); // parent found
 
       locationRepo.create.mockReturnValue(childLocation);
@@ -164,7 +166,11 @@ describe('LocationsService', () => {
       });
       locationRepo.save.mockResolvedValue(created as Location);
 
-      const dto = makeCreateDto({ department: undefined, capacity: undefined, openTime: undefined });
+      const dto = makeCreateDto({
+        department: undefined,
+        capacity: undefined,
+        openTime: undefined,
+      });
       await service.create(dto);
 
       expect(created).toMatchObject({
@@ -212,6 +218,38 @@ describe('LocationsService', () => {
 
       expect(result).toEqual([]);
     });
+
+    it('should nullify parents at every level of a deeply nested tree', async () => {
+      // Build a 3-level tree: root → child → grandchild
+      // TypeORM's findTrees can return nodes with parent references populated;
+      // nullifyParents() must recurse and clear them all.
+      const grandchild = makeLocation({
+        id: 3,
+        locationNumber: 'A-01-01',
+        parent: makeLocation({ id: 2, locationNumber: 'A-01' }), // non-null parent
+        children: [],
+      });
+      const child = makeLocation({
+        id: 2,
+        locationNumber: 'A-01',
+        parent: makeLocation({ id: 1, locationNumber: 'A' }), // non-null parent
+        children: [grandchild],
+      });
+      const root = makeLocation({
+        id: 1,
+        locationNumber: 'A',
+        parent: null,
+        children: [child],
+      });
+
+      treeRepo.findTrees.mockResolvedValue([root]);
+
+      const result = await service.findTree();
+
+      expect(result[0].parent).toBeNull();
+      expect(result[0].children[0].parent).toBeNull();
+      expect(result[0].children[0].children[0].parent).toBeNull();
+    });
   });
 
   // -------------------------------------------------------------------------
@@ -250,6 +288,25 @@ describe('LocationsService', () => {
       expect(result.parent).toBeNull();
       expect(result.children).toHaveLength(1);
       expect(result.children[0]).toMatchObject({ id: 2 });
+    });
+
+    it('should nullify the parent on the tree root returned by findDescendantsTree', async () => {
+      // TypeORM's findDescendantsTree may return the root node with its parent
+      // field still populated. The service must explicitly set tree.parent = null.
+      const location = makeLocation({ id: 1 });
+      const parentLocation = makeLocation({ id: 0, locationNumber: 'A' });
+      const treeWithPopulatedParent = makeLocation({
+        id: 1,
+        parent: parentLocation, // non-null — simulate TypeORM returning it
+        children: [],
+      });
+
+      locationRepo.findOne.mockResolvedValue(location);
+      treeRepo.findDescendantsTree.mockResolvedValue(treeWithPopulatedParent);
+
+      const result = await service.findOne('A-01-01');
+
+      expect(result.parent).toBeNull();
     });
   });
 

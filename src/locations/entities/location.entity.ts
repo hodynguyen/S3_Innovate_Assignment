@@ -11,7 +11,7 @@ import {
 } from 'typeorm';
 
 @Entity('location')
-@Tree('adjacency-list')
+@Tree('closure-table')
 export class Location {
   @PrimaryGeneratedColumn()
   id: number;

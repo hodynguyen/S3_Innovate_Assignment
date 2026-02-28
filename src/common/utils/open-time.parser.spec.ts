@@ -54,10 +54,10 @@ describe('parseOpenTime()', () => {
       const result = parseOpenTime('Mon to Fri (9AM to 6PM)');
       expect(result).not.toBeNull();
       expect(result).toMatchObject({
-        startDay: 1,  // Mon
-        endDay: 5,    // Fri
+        startDay: 1, // Mon
+        endDay: 5, // Fri
         startHour: 9,
-        endHour: 18,  // 6PM → 18
+        endHour: 18, // 6PM → 18
       });
     });
   });
@@ -81,7 +81,9 @@ describe('parseOpenTime()', () => {
   describe('when openTime has an unrecognized format', () => {
     it('should throw an Error for a completely unknown string', () => {
       expect(() => parseOpenTime('Weekdays only')).toThrow(Error);
-      expect(() => parseOpenTime('Weekdays only')).toThrow(/Unrecognized openTime format/i);
+      expect(() => parseOpenTime('Weekdays only')).toThrow(
+        /Unrecognized openTime format/i,
+      );
     });
 
     it('should throw an Error for an empty string', () => {
@@ -117,7 +119,9 @@ describe('isWithinOpenTime()', () => {
     });
 
     it('should return true on a Saturday at 11:59 PM', () => {
-      expect(isWithinOpenTime('Always open', makeLocalDate(SAT, 23, 59))).toBe(true);
+      expect(isWithinOpenTime('Always open', makeLocalDate(SAT, 23, 59))).toBe(
+        true,
+      );
     });
   });
 
@@ -211,15 +215,21 @@ describe('isWithinOpenTime()', () => {
   // -------------------------------------------------------------------------
   describe('boundary edge cases', () => {
     it('should treat exactly 9AM as valid (inclusive start)', () => {
-      expect(isWithinOpenTime('Mon to Fri (9AM to 6PM)', makeLocalDate(MON, 9, 0))).toBe(true);
+      expect(
+        isWithinOpenTime('Mon to Fri (9AM to 6PM)', makeLocalDate(MON, 9, 0)),
+      ).toBe(true);
     });
 
     it('should treat exactly 6PM (18:00) as invalid (exclusive end)', () => {
-      expect(isWithinOpenTime('Mon to Fri (9AM to 6PM)', makeLocalDate(FRI, 18, 0))).toBe(false);
+      expect(
+        isWithinOpenTime('Mon to Fri (9AM to 6PM)', makeLocalDate(FRI, 18, 0)),
+      ).toBe(false);
     });
 
     it('should treat 8:59 as invalid (just before start)', () => {
-      expect(isWithinOpenTime('Mon to Fri (9AM to 6PM)', makeLocalDate(MON, 8, 59))).toBe(false);
+      expect(
+        isWithinOpenTime('Mon to Fri (9AM to 6PM)', makeLocalDate(MON, 8, 59)),
+      ).toBe(false);
     });
   });
 

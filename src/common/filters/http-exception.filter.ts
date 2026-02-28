@@ -33,9 +33,7 @@ export class HttpExceptionFilter implements ExceptionFilter {
       path: request.url,
       method: request.method,
       message:
-        typeof message === 'object' &&
-        message !== null &&
-        'message' in message
+        typeof message === 'object' && message !== null && 'message' in message
           ? (message as Record<string, unknown>).message
           : message,
     };

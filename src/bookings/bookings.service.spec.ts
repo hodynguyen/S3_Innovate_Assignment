@@ -19,7 +19,9 @@ jest.mock('../common/utils/open-time.parser', () => ({
 // Import the mock AFTER jest.mock() so we have a typed reference.
 import { isWithinOpenTime } from '../common/utils/open-time.parser';
 
-const mockIsWithinOpenTime = isWithinOpenTime as jest.MockedFunction<typeof isWithinOpenTime>;
+const mockIsWithinOpenTime = isWithinOpenTime as jest.MockedFunction<
+  typeof isWithinOpenTime
+>;
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -105,7 +107,9 @@ describe('BookingsService', () => {
         endTime: '2026-03-10T09:00:00.000Z',
       });
       await expect(service.create(dto)).rejects.toThrow(BadRequestException);
-      await expect(service.create(dto)).rejects.toThrow(/startTime must be before endTime/i);
+      await expect(service.create(dto)).rejects.toThrow(
+        /startTime must be before endTime/i,
+      );
     });
 
     it('should throw BadRequestException when startTime is after endTime', async () => {
@@ -116,7 +120,9 @@ describe('BookingsService', () => {
         endTime: '2026-03-10T09:00:00.000Z',
       });
       await expect(service.create(dto)).rejects.toThrow(BadRequestException);
-      await expect(service.create(dto)).rejects.toThrow(/startTime must be before endTime/i);
+      await expect(service.create(dto)).rejects.toThrow(
+        /startTime must be before endTime/i,
+      );
     });
 
     // -----------------------------------------------------------------------
@@ -128,7 +134,9 @@ describe('BookingsService', () => {
         makeLocation({ department: null }),
       );
 
-      await expect(service.create(makeDto())).rejects.toThrow(BadRequestException);
+      await expect(service.create(makeDto())).rejects.toThrow(
+        BadRequestException,
+      );
       await expect(service.create(makeDto())).rejects.toThrow(/not bookable/i);
     });
 
@@ -137,7 +145,9 @@ describe('BookingsService', () => {
         makeLocation({ capacity: null }),
       );
 
-      await expect(service.create(makeDto())).rejects.toThrow(BadRequestException);
+      await expect(service.create(makeDto())).rejects.toThrow(
+        BadRequestException,
+      );
       await expect(service.create(makeDto())).rejects.toThrow(/not bookable/i);
     });
 
@@ -146,7 +156,9 @@ describe('BookingsService', () => {
         makeLocation({ department: null, capacity: null }),
       );
 
-      await expect(service.create(makeDto())).rejects.toThrow(BadRequestException);
+      await expect(service.create(makeDto())).rejects.toThrow(
+        BadRequestException,
+      );
     });
 
     // -----------------------------------------------------------------------
@@ -171,14 +183,16 @@ describe('BookingsService', () => {
     // -----------------------------------------------------------------------
 
     it('should throw BadRequestException when attendees exceed capacity', async () => {
-      locationsService.findOne.mockResolvedValue(makeLocation({ capacity: 10 }));
+      locationsService.findOne.mockResolvedValue(
+        makeLocation({ capacity: 10 }),
+      );
 
-      await expect(
-        service.create(makeDto({ attendees: 11 })),
-      ).rejects.toThrow(BadRequestException);
-      await expect(
-        service.create(makeDto({ attendees: 11 })),
-      ).rejects.toThrow(/capacity exceeded/i);
+      await expect(service.create(makeDto({ attendees: 11 }))).rejects.toThrow(
+        BadRequestException,
+      );
+      await expect(service.create(makeDto({ attendees: 11 }))).rejects.toThrow(
+        /capacity exceeded/i,
+      );
     });
 
     it('should NOT throw for attendees exactly equal to capacity', async () => {
@@ -203,15 +217,19 @@ describe('BookingsService', () => {
       // First call (startTime) → false; second call (endTime) would not be reached
       mockIsWithinOpenTime.mockReturnValueOnce(false);
 
-      await expect(service.create(makeDto())).rejects.toThrow(BadRequestException);
-      await expect(service.create(makeDto())).rejects.toThrow(/start time is outside open hours/i);
+      await expect(service.create(makeDto())).rejects.toThrow(
+        BadRequestException,
+      );
+      await expect(service.create(makeDto())).rejects.toThrow(
+        /start time is outside open hours/i,
+      );
     });
 
     it('should throw BadRequestException when endTime is outside openTime window', async () => {
       locationsService.findOne.mockResolvedValue(makeLocation());
       // startTime passes, endTime fails — set up the two-call sequence once
       mockIsWithinOpenTime
-        .mockReturnValueOnce(true)   // startTime OK
+        .mockReturnValueOnce(true) // startTime OK
         .mockReturnValueOnce(false); // endTime fails
 
       const error = await service.create(makeDto()).catch((e) => e);
@@ -278,7 +296,8 @@ describe('BookingsService', () => {
       const dto = makeDto();
       await service.create(dto);
 
-      const createCall = bookingRepo.create.mock.calls[0][0] as Partial<Booking>;
+      const createCall = bookingRepo.create.mock
+        .calls[0][0] as Partial<Booking>;
       expect(createCall.startTime).toBeInstanceOf(Date);
       expect(createCall.endTime).toBeInstanceOf(Date);
     });

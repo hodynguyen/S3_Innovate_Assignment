@@ -1,14 +1,11 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import {
-  IsString,
-  IsNotEmpty,
-  IsOptional,
-  IsInt,
-  Min,
-} from 'class-validator';
+import { IsString, IsNotEmpty, IsOptional, IsInt, Min } from 'class-validator';
 
 export class CreateLocationDto {
-  @ApiProperty({ example: 'A-01-01', description: 'Unique location identifier' })
+  @ApiProperty({
+    example: 'A-01-01',
+    description: 'Unique location identifier',
+  })
   @IsString()
   @IsNotEmpty()
   locationNumber: string;

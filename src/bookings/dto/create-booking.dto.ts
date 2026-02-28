@@ -8,7 +8,10 @@ import {
 } from 'class-validator';
 
 export class CreateBookingDto {
-  @ApiProperty({ example: 'A-01-01', description: 'locationNumber of the room to book' })
+  @ApiProperty({
+    example: 'A-01-01',
+    description: 'locationNumber of the room to book',
+  })
   @IsString()
   @IsNotEmpty()
   locationNumber: string;
@@ -23,11 +26,17 @@ export class CreateBookingDto {
   @Min(1)
   attendees: number;
 
-  @ApiProperty({ example: '2026-03-10T09:00:00Z', description: 'Booking start time (ISO 8601)' })
+  @ApiProperty({
+    example: '2026-03-10T09:00:00Z',
+    description: 'Booking start time (ISO 8601)',
+  })
   @IsDateString()
   startTime: string;
 
-  @ApiProperty({ example: '2026-03-10T11:00:00Z', description: 'Booking end time (ISO 8601)' })
+  @ApiProperty({
+    example: '2026-03-10T11:00:00Z',
+    description: 'Booking end time (ISO 8601)',
+  })
   @IsDateString()
   endTime: string;
 }

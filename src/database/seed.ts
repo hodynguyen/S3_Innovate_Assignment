@@ -37,9 +37,24 @@ const SEED_DATA: LocationSeed[] = [
   { locationNumber: 'A', locationName: 'Building A', building: 'A' },
 
   // Floor A-01
-  { locationNumber: 'A-01', locationName: 'Floor 1', building: 'A', parentNumber: 'A' },
-  { locationNumber: 'A-01-Lobby', locationName: 'Lobby Level 1', building: 'A', parentNumber: 'A-01' },
-  { locationNumber: 'A-01-Corridor', locationName: 'Corridor Floor 1', building: 'A', parentNumber: 'A-01' },
+  {
+    locationNumber: 'A-01',
+    locationName: 'Floor 1',
+    building: 'A',
+    parentNumber: 'A',
+  },
+  {
+    locationNumber: 'A-01-Lobby',
+    locationName: 'Lobby Level 1',
+    building: 'A',
+    parentNumber: 'A-01',
+  },
+  {
+    locationNumber: 'A-01-Corridor',
+    locationName: 'Corridor Floor 1',
+    building: 'A',
+    parentNumber: 'A-01',
+  },
   {
     locationNumber: 'A-01-01',
     locationName: 'Meeting Room 1',
@@ -60,19 +75,49 @@ const SEED_DATA: LocationSeed[] = [
   },
 
   // Sub-rooms under A-01-01
-  { locationNumber: 'A-01-01-M1', locationName: 'Sub-room M1', building: 'A', parentNumber: 'A-01-01' },
-  { locationNumber: 'A-01-01-M2', locationName: 'Sub-room M2', building: 'A', parentNumber: 'A-01-01' },
+  {
+    locationNumber: 'A-01-01-M1',
+    locationName: 'Sub-room M1',
+    building: 'A',
+    parentNumber: 'A-01-01',
+  },
+  {
+    locationNumber: 'A-01-01-M2',
+    locationName: 'Sub-room M2',
+    building: 'A',
+    parentNumber: 'A-01-01',
+  },
 
   // CarPark
-  { locationNumber: 'A-CarPark', locationName: 'Car Park', building: 'A', parentNumber: 'A' },
+  {
+    locationNumber: 'A-CarPark',
+    locationName: 'Car Park',
+    building: 'A',
+    parentNumber: 'A',
+  },
 
   // Building B root
   { locationNumber: 'B', locationName: 'Building B', building: 'B' },
 
   // Floor B-05
-  { locationNumber: 'B-05', locationName: 'Floor 5', building: 'B', parentNumber: 'B' },
-  { locationNumber: 'B-05-Corridor', locationName: 'Corridor Floor 5', building: 'B', parentNumber: 'B-05' },
-  { locationNumber: 'B-05-15', locationName: 'Pantry Floor 5', building: 'B', parentNumber: 'B-05' },
+  {
+    locationNumber: 'B-05',
+    locationName: 'Floor 5',
+    building: 'B',
+    parentNumber: 'B',
+  },
+  {
+    locationNumber: 'B-05-Corridor',
+    locationName: 'Corridor Floor 5',
+    building: 'B',
+    parentNumber: 'B-05',
+  },
+  {
+    locationNumber: 'B-05-15',
+    locationName: 'Pantry Floor 5',
+    building: 'B',
+    parentNumber: 'B-05',
+  },
   {
     locationNumber: 'B-05-11',
     locationName: 'Utility Room',
@@ -140,12 +185,16 @@ async function seed() {
     const loc = locationMap.get(data.locationNumber)!;
     const parent = locationMap.get(data.parentNumber);
     if (!parent) {
-      console.warn(`Parent not found: ${data.parentNumber} for ${data.locationNumber}`);
+      console.warn(
+        `Parent not found: ${data.parentNumber} for ${data.locationNumber}`,
+      );
       continue;
     }
     loc.parent = parent;
     await repo.save(loc);
-    console.log(`Linked: ${data.locationNumber} → parent: ${data.parentNumber}`);
+    console.log(
+      `Linked: ${data.locationNumber} → parent: ${data.parentNumber}`,
+    );
   }
 
   console.log('\nSeed completed successfully.');

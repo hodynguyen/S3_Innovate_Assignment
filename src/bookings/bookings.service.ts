@@ -79,7 +79,9 @@ export class BookingsService {
     });
 
     const saved = await this.bookingRepo.save(booking);
-    this.logger.log(`Booking created: id=${saved.id} for ${dto.locationNumber}`);
+    this.logger.log(
+      `Booking created: id=${saved.id} for ${dto.locationNumber}`,
+    );
     return saved;
   }
 

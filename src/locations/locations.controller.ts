@@ -31,7 +31,10 @@ export class LocationsController {
   @Post()
   @ApiOperation({ summary: 'Create a new location node' })
   @ApiCreatedResponse({ description: 'Location created successfully' })
-  @ApiResponse({ status: 400, description: 'Invalid request body (validation error)' })
+  @ApiResponse({
+    status: 400,
+    description: 'Invalid request body (validation error)',
+  })
   @ApiResponse({ status: 409, description: 'Location number already exists' })
   create(@Body() dto: CreateLocationDto) {
     this.logger.log(`POST /locations - ${dto.locationNumber}`);
@@ -46,7 +49,9 @@ export class LocationsController {
   }
 
   @Get(':locationNumber')
-  @ApiOperation({ summary: 'Get a location and its descendants by locationNumber' })
+  @ApiOperation({
+    summary: 'Get a location and its descendants by locationNumber',
+  })
   @ApiParam({ name: 'locationNumber', example: 'A-01-01' })
   @ApiResponse({ status: 404, description: 'Location not found' })
   findOne(@Param('locationNumber') locationNumber: string) {

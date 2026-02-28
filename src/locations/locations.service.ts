@@ -48,13 +48,17 @@ export class LocationsService {
         where: { id: dto.parentId },
       });
       if (!parent) {
-        throw new NotFoundException(`Parent location with id ${dto.parentId} not found`);
+        throw new NotFoundException(
+          `Parent location with id ${dto.parentId} not found`,
+        );
       }
       location.parent = parent;
     }
 
     const saved = await this.locationRepo.save(location);
-    this.logger.log(`Location created: ${saved.locationNumber} (id=${saved.id})`);
+    this.logger.log(
+      `Location created: ${saved.locationNumber} (id=${saved.id})`,
+    );
     return saved;
   }
 
@@ -92,7 +96,10 @@ export class LocationsService {
     return location;
   }
 
-  async update(locationNumber: string, dto: UpdateLocationDto): Promise<Location> {
+  async update(
+    locationNumber: string,
+    dto: UpdateLocationDto,
+  ): Promise<Location> {
     this.logger.log(`Updating location: ${locationNumber}`);
     const location = await this.locationRepo.findOne({
       where: { locationNumber },

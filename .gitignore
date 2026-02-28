@@ -30,6 +30,7 @@ Thumbs.db
 
 # Personal / workflow files — not part of the project submission
 .hody/
+.claude/
 CLAUDE.md
 jd.md
 assignment_2026_final.md

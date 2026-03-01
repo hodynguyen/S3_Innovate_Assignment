@@ -7,6 +7,7 @@ import { Location } from './entities/location.entity';
 import { LocationDepartment } from './entities/location-department.entity';
 import { CreateLocationDto } from './dto/create-location.dto';
 import { UpdateLocationDto } from './dto/update-location.dto';
+import { CreateLocationDepartmentDto } from './dto/create-location-department.dto';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -34,6 +35,31 @@ function makeCreateDto(
     locationNumber: 'A-01-01',
     locationName: 'Meeting Room 1',
     building: 'A',
+    ...overrides,
+  };
+}
+
+function makeDeptConfig(
+  overrides: Partial<LocationDepartment> = {},
+): LocationDepartment {
+  return {
+    id: 1,
+    locationId: 1,
+    location: makeLocation(),
+    department: 'EFM',
+    capacity: 10,
+    openTime: 'Mon to Fri (9AM to 6PM)',
+    ...overrides,
+  } as LocationDepartment;
+}
+
+function makeCreateDeptDto(
+  overrides: Partial<CreateLocationDepartmentDto> = {},
+): CreateLocationDepartmentDto {
+  return {
+    department: 'EFM',
+    capacity: 10,
+    openTime: 'Mon to Fri (9AM to 6PM)',
     ...overrides,
   };
 }
@@ -387,6 +413,167 @@ describe('LocationsService', () => {
       locationRepo.remove.mockResolvedValue(undefined);
 
       const result = await service.remove('A-01-01');
+      expect(result).toBeUndefined();
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // findDepartments()
+  // -------------------------------------------------------------------------
+
+  describe('findDepartments()', () => {
+    it('should throw NotFoundException when location does not exist', async () => {
+      locationRepo.findOne.mockResolvedValue(null);
+
+      const error = await service.findDepartments('Z-99-99').catch((e) => e);
+      expect(error).toBeInstanceOf(NotFoundException);
+      expect(error.message).toMatch(/'Z-99-99' not found/i);
+    });
+
+    it('should return the array of department configs when location exists', async () => {
+      const location = makeLocation({ id: 1 });
+      const deptConfigs = [
+        makeDeptConfig({ id: 1, department: 'EFM' }),
+        makeDeptConfig({ id: 2, department: 'FSS', capacity: 50 }),
+      ];
+
+      locationRepo.findOne.mockResolvedValue(location);
+      locationDepartmentRepo.find.mockResolvedValue(deptConfigs);
+
+      const result = await service.findDepartments('A-01-01');
+
+      expect(result).toBe(deptConfigs);
+      expect(locationDepartmentRepo.find).toHaveBeenCalledWith({
+        where: { locationId: location.id },
+      });
+    });
+
+    it('should return an empty array when location has no department configs', async () => {
+      const location = makeLocation({ id: 1 });
+
+      locationRepo.findOne.mockResolvedValue(location);
+      locationDepartmentRepo.find.mockResolvedValue([]);
+
+      const result = await service.findDepartments('A-01-01');
+
+      expect(result).toEqual([]);
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // addDepartment()
+  // -------------------------------------------------------------------------
+
+  describe('addDepartment()', () => {
+    it('should throw NotFoundException when location does not exist', async () => {
+      locationRepo.findOne.mockResolvedValue(null);
+
+      const error = await service
+        .addDepartment('Z-99-99', makeCreateDeptDto())
+        .catch((e) => e);
+      expect(error).toBeInstanceOf(NotFoundException);
+      expect(error.message).toMatch(/'Z-99-99' not found/i);
+    });
+
+    it('should throw ConflictException when the same department is already registered for the location', async () => {
+      const location = makeLocation({ id: 1 });
+
+      locationRepo.findOne.mockResolvedValue(location);
+      // findOne on locationDepartmentRepo returns an existing row → duplicate
+      locationDepartmentRepo.findOne.mockResolvedValue(makeDeptConfig());
+
+      const error = await service
+        .addDepartment('A-01-01', makeCreateDeptDto())
+        .catch((e) => e);
+      expect(error).toBeInstanceOf(ConflictException);
+      expect(error.message).toMatch(/already registered/i);
+      expect(error.message).toContain('EFM');
+      expect(error.message).toContain('A-01-01');
+    });
+
+    it('should create and return the new department config on the happy path', async () => {
+      const location = makeLocation({ id: 1 });
+      const saved = makeDeptConfig({ id: 5 });
+
+      locationRepo.findOne.mockResolvedValue(location);
+      locationDepartmentRepo.findOne.mockResolvedValue(null); // no existing row
+      locationDepartmentRepo.create.mockReturnValue(saved);
+      locationDepartmentRepo.save.mockResolvedValue(saved);
+
+      const dto = makeCreateDeptDto();
+      const result = await service.addDepartment('A-01-01', dto);
+
+      expect(result).toBe(saved);
+      expect(locationDepartmentRepo.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          locationId: location.id,
+          department: dto.department,
+          capacity: dto.capacity,
+        }),
+      );
+      expect(locationDepartmentRepo.save).toHaveBeenCalledWith(saved);
+    });
+
+    it('should store null for openTime when dto.openTime is not provided', async () => {
+      const location = makeLocation({ id: 1 });
+      const captured: Partial<LocationDepartment> = {};
+
+      locationRepo.findOne.mockResolvedValue(location);
+      locationDepartmentRepo.findOne.mockResolvedValue(null);
+      locationDepartmentRepo.create.mockImplementation((data) => {
+        Object.assign(captured, data);
+        return captured as LocationDepartment;
+      });
+      locationDepartmentRepo.save.mockResolvedValue(captured as LocationDepartment);
+
+      const dto = makeCreateDeptDto({ openTime: undefined });
+      await service.addDepartment('A-01-01', dto);
+
+      expect(captured.openTime).toBeNull();
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // removeDepartment()
+  // -------------------------------------------------------------------------
+
+  describe('removeDepartment()', () => {
+    it('should throw NotFoundException when location does not exist', async () => {
+      locationRepo.findOne.mockResolvedValue(null);
+
+      const error = await service
+        .removeDepartment('Z-99-99', 'EFM')
+        .catch((e) => e);
+      expect(error).toBeInstanceOf(NotFoundException);
+      expect(error.message).toMatch(/'Z-99-99' not found/i);
+    });
+
+    it('should throw NotFoundException when the department config does not exist for the location', async () => {
+      const location = makeLocation({ id: 1 });
+
+      locationRepo.findOne.mockResolvedValue(location);
+      locationDepartmentRepo.findOne.mockResolvedValue(null); // dept config missing
+
+      const error = await service
+        .removeDepartment('A-01-01', 'HR')
+        .catch((e) => e);
+      expect(error).toBeInstanceOf(NotFoundException);
+      expect(error.message).toMatch(/not registered/i);
+      expect(error.message).toContain('HR');
+      expect(error.message).toContain('A-01-01');
+    });
+
+    it('should remove the department config and resolve void on success', async () => {
+      const location = makeLocation({ id: 1 });
+      const deptConfig = makeDeptConfig({ id: 3, department: 'EFM' });
+
+      locationRepo.findOne.mockResolvedValue(location);
+      locationDepartmentRepo.findOne.mockResolvedValue(deptConfig);
+      locationDepartmentRepo.remove.mockResolvedValue(undefined);
+
+      const result = await service.removeDepartment('A-01-01', 'EFM');
+
+      expect(locationDepartmentRepo.remove).toHaveBeenCalledWith(deptConfig);
       expect(result).toBeUndefined();
     });
   });

@@ -168,6 +168,7 @@ async function seed() {
 
   console.log('Clearing existing data...');
   await AppDataSource.query('DELETE FROM location_department');
+  await AppDataSource.query('DELETE FROM location_closure');
   await AppDataSource.query('DELETE FROM location');
 
   // First pass: create all locations without parents

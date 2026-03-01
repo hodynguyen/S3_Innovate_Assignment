@@ -7,7 +7,6 @@ import {
   TreeParent,
   CreateDateColumn,
   UpdateDateColumn,
-  Index,
   OneToMany,
 } from 'typeorm';
 import { LocationDepartment } from './location-department.entity';
@@ -18,7 +17,6 @@ export class Location {
   @PrimaryGeneratedColumn()
   id: number;
 
-  @Index({ unique: true })
   @Column({ unique: true })
   locationNumber: string;
 

@@ -5,6 +5,7 @@ import {
   IsInt,
   Min,
   IsDateString,
+  Matches,
 } from 'class-validator';
 
 export class CreateBookingDto {
@@ -14,6 +15,9 @@ export class CreateBookingDto {
   })
   @IsString()
   @IsNotEmpty()
+  @Matches(/^[A-Z0-9][A-Z0-9-]*$/, {
+    message: 'locationNumber must be uppercase alphanumeric with hyphens',
+  })
   locationNumber: string;
 
   @ApiProperty({ example: 'EFM', description: 'Department making the booking' })

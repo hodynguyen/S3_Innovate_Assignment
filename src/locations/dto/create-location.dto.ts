@@ -1,5 +1,11 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsString, IsNotEmpty, IsOptional, IsInt } from 'class-validator';
+import {
+  IsString,
+  IsNotEmpty,
+  IsOptional,
+  IsInt,
+  Matches,
+} from 'class-validator';
 
 export class CreateLocationDto {
   @ApiProperty({
@@ -8,6 +14,9 @@ export class CreateLocationDto {
   })
   @IsString()
   @IsNotEmpty()
+  @Matches(/^[A-Z0-9][A-Z0-9-]*$/, {
+    message: 'locationNumber must be uppercase alphanumeric with hyphens',
+  })
   locationNumber: string;
 
   @ApiProperty({ example: 'Meeting Room 1' })

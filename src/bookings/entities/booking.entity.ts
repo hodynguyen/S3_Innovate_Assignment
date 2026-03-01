@@ -5,10 +5,12 @@ import {
   ManyToOne,
   JoinColumn,
   CreateDateColumn,
+  Index,
 } from 'typeorm';
 import { Location } from '../../locations/entities/location.entity';
 
 @Entity('booking')
+@Index(['locationId', 'startTime', 'endTime'])
 export class Booking {
   @PrimaryGeneratedColumn()
   id: number;

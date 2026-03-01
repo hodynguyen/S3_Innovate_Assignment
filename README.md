@@ -344,11 +344,18 @@ Full interactive documentation is available at `http://localhost:3000/api` (Swag
 
 ### Bookings
 
-| Method | Path            | Description                                                          |
-|--------|-----------------|----------------------------------------------------------------------|
-| `POST` | `/bookings`     | Create a booking (enforces department, capacity, and open-time rules)|
-| `GET`  | `/bookings`     | Get all bookings (ordered by creation date, newest first)            |
-| `GET`  | `/bookings/:id` | Get a single booking by numeric ID                                   |
+| Method   | Path            | Description                                                                         |
+|----------|-----------------|-------------------------------------------------------------------------------------|
+| `POST`   | `/bookings`     | Create a booking (enforces department, capacity, and open-time rules)               |
+| `GET`    | `/bookings`     | Get bookings paginated (`?page=1&limit=20`); returns `{ data, total, page, limit }` |
+| `GET`    | `/bookings/:id` | Get a single booking by numeric ID                                                  |
+| `DELETE` | `/bookings/:id` | Delete a booking by numeric ID (returns 204 No Content)                             |
+
+### Health
+
+| Method | Path      | Description                                    |
+|--------|-----------|------------------------------------------------|
+| `GET`  | `/health` | Application + database health check (Terminus) |
 
 ### Error Response Shape
 
@@ -408,21 +415,42 @@ DB_USER=postgres
 DB_PASS=password
 DB_NAME=s3_innovate
 
-TYPEORM_SYNC=true   # auto-syncs schema on startup; set to false in production
+# WARNING: TYPEORM_SYNC=true is convenient for development but must be false in production.
+# Use migrations (npm run migration:run) in production.
+TYPEORM_SYNC=true
+
+CORS_ORIGIN=http://localhost:3000
 ```
 
-### 7.5 Run in Development Mode
+### 7.5 Run Migrations (Production)
+
+In production (`TYPEORM_SYNC=false`), apply database schema changes via migrations:
+
+```bash
+# Generate a migration from current entities
+npm run migration:generate -- --name InitialSchema
+
+# Apply all pending migrations
+npm run migration:run
+
+# Revert the most recent migration
+npm run migration:revert
+```
+
+For local development, `TYPEORM_SYNC=true` auto-syncs the schema on startup, so migrations are not required.
+
+### 7.6 Run in Development Mode
 
 ```bash
 npm run start:dev
 ```
 
 The API is now available at `http://localhost:3000`.
-Swagger UI is available at `http://localhost:3000/api`.
+Swagger UI is available at `http://localhost:3000/api` (development only).
 
 NestJS will watch for file changes and restart automatically.
 
-### 7.6 Seed Sample Data (Optional)
+### 7.7 Seed Sample Data (Optional)
 
 Load the sample locations and a representative booking from the assignment brief:
 
@@ -432,7 +460,7 @@ npm run seed
 
 This populates Building A (Floor 1, Meeting Rooms 1 and 2, Lobby, Corridor) and Building B (Floor 5, Utility Room, Sanitary Room, Meeting Toilet, Genset Room, Pantry, Corridor). Meeting Room 2 (A-01-02) is seeded with two department configs (FSS and AVS) to demonstrate the multi-department use case.
 
-### 7.7 Verify the API
+### 7.8 Verify the API
 
 ```bash
 # Get the full location tree
@@ -483,8 +511,15 @@ npm test -- --testPathPattern=open-time.parser
 ```
 s3-innovate-assignment/
 ├── src/
-│   ├── main.ts                              # Bootstrap: Swagger, ValidationPipe, global filter, port
-│   ├── app.module.ts                        # Root module — imports LocationsModule, BookingsModule
+│   ├── main.ts                              # Bootstrap: helmet, CORS, Swagger (dev only), shutdown hooks
+│   ├── app.module.ts                        # Root module — ConfigModule, TypeORM, Throttler, Health
+│   │
+│   ├── config/
+│   │   └── env.validation.ts               # Joi schema for environment variable validation
+│   │
+│   ├── health/
+│   │   ├── health.module.ts                # Terminus health module
+│   │   └── health.controller.ts            # GET /health — DB ping check
 │   │
 │   ├── locations/
 │   │   ├── locations.module.ts              # Module definition, TypeORM entity registration
@@ -497,31 +532,44 @@ s3-innovate-assignment/
 │   │   └── dto/
 │   │       ├── create-location.dto.ts           # Validated input for location creation
 │   │       ├── update-location.dto.ts           # Partial update DTO (all fields optional)
-│   │       └── create-location-department.dto.ts # Validated input for adding a dept config
+│   │       ├── create-location-department.dto.ts # Validated input for adding a dept config
+│   │       └── update-location-department.dto.ts # Partial update for dept config
 │   │
 │   ├── bookings/
 │   │   ├── bookings.module.ts               # Module definition, injects LocationsModule
-│   │   ├── bookings.controller.ts           # POST/GET /bookings, GET /bookings/:id
-│   │   ├── bookings.service.ts              # Booking creation with 4-step rule enforcement
+│   │   ├── bookings.controller.ts           # POST/GET/DELETE /bookings, GET /bookings/:id
+│   │   ├── bookings.service.ts              # Booking creation with SERIALIZABLE transaction
 │   │   ├── bookings.service.spec.ts         # Unit tests for BookingsService
 │   │   ├── entities/
-│   │   │   └── booking.entity.ts            # TypeORM entity — ManyToOne to Location
+│   │   │   └── booking.entity.ts            # TypeORM entity — ManyToOne to Location, composite index
 │   │   └── dto/
-│   │       └── create-booking.dto.ts        # Validated booking input with ISO 8601 dates
+│   │       ├── create-booking.dto.ts        # Validated booking input with ISO 8601 dates
+│   │       └── paginate-booking.dto.ts      # Pagination query params (page, limit)
 │   │
 │   ├── common/
 │   │   ├── filters/
-│   │   │   └── http-exception.filter.ts     # Global filter — structured error response + structured logging
+│   │   │   └── http-exception.filter.ts     # Global filter — structured error response + logging
 │   │   └── utils/
 │   │       ├── open-time.parser.ts          # Parses openTime strings and checks datetime windows
 │   │       └── open-time.parser.spec.ts     # Unit tests for the parser
 │   │
 │   └── database/
+│       ├── migrations/                      # TypeORM migration files (npm run migration:generate)
 │       └── seed.ts                          # Standalone seed script (npm run seed)
 │
+├── typeorm.config.ts                        # DataSource config for TypeORM CLI (migrations)
 ├── docker-compose.yml                       # PostgreSQL 16 container
 ├── .env.example                             # Environment variable template
 ├── package.json                             # Scripts, dependencies
 ├── tsconfig.json                            # TypeScript configuration
 └── README.md                                # This file
 ```
+
+### Production Deployment Notes
+
+- Set `NODE_ENV=production` — disables Swagger UI
+- Set `TYPEORM_SYNC=false` — use `npm run migration:run` instead
+- Configure `CORS_ORIGIN` to your actual frontend domain
+- Rate limiting is enabled globally (60 requests / 60 seconds per IP) via `@nestjs/throttler`
+- Graceful shutdown hooks (`enableShutdownHooks`) handle SIGTERM from container orchestrators
+- `GET /health` provides a liveness/readiness check for load balancers

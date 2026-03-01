@@ -16,8 +16,10 @@ import {
   ApiParam,
   ApiResponse,
   ApiCreatedResponse,
+  ApiOkResponse,
 } from '@nestjs/swagger';
 import { LocationsService } from './locations.service';
+import { Location } from './entities/location.entity';
 import { CreateLocationDto } from './dto/create-location.dto';
 import { UpdateLocationDto } from './dto/update-location.dto';
 import { CreateLocationDepartmentDto } from './dto/create-location-department.dto';
@@ -31,8 +33,12 @@ export class LocationsController {
   constructor(private readonly locationsService: LocationsService) {}
 
   @Post()
+  @HttpCode(HttpStatus.CREATED)
   @ApiOperation({ summary: 'Create a new location node' })
-  @ApiCreatedResponse({ description: 'Location created successfully' })
+  @ApiCreatedResponse({
+    type: Location,
+    description: 'Location created successfully',
+  })
   @ApiResponse({
     status: 400,
     description: 'Invalid request body (validation error)',
@@ -45,6 +51,7 @@ export class LocationsController {
 
   @Get()
   @ApiOperation({ summary: 'Get full location tree (nested)' })
+  @ApiOkResponse({ type: [Location] })
   findAll() {
     this.logger.log('GET /locations');
     return this.locationsService.findTree();
@@ -80,7 +87,9 @@ export class LocationsController {
   }
 
   @Patch(':locationNumber/departments/:department')
-  @ApiOperation({ summary: 'Update capacity or openTime for a department config' })
+  @ApiOperation({
+    summary: 'Update capacity or openTime for a department config',
+  })
   @ApiParam({ name: 'locationNumber', example: 'A-01-01' })
   @ApiParam({ name: 'department', example: 'EFM' })
   @ApiResponse({ status: 200, description: 'Department config updated' })
@@ -96,7 +105,11 @@ export class LocationsController {
     this.logger.log(
       `PATCH /locations/${locationNumber}/departments/${department}`,
     );
-    return this.locationsService.updateDepartment(locationNumber, department, dto);
+    return this.locationsService.updateDepartment(
+      locationNumber,
+      department,
+      dto,
+    );
   }
 
   @Delete(':locationNumber/departments/:department')
@@ -123,6 +136,7 @@ export class LocationsController {
   @ApiOperation({
     summary: 'Get a location and its descendants by locationNumber',
   })
+  @ApiOkResponse({ type: Location })
   @ApiParam({ name: 'locationNumber', example: 'A-01-01' })
   @ApiResponse({ status: 404, description: 'Location not found' })
   findOne(@Param('locationNumber') locationNumber: string) {

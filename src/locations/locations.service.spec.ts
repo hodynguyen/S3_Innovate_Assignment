@@ -371,26 +371,28 @@ describe('LocationsService', () => {
   });
 
   // -------------------------------------------------------------------------
-  // findById()
+  // findFlatByNumber()
   // -------------------------------------------------------------------------
 
-  describe('findById()', () => {
-    it('should throw NotFoundException when no location matches the id', async () => {
+  describe('findFlatByNumber()', () => {
+    it('should throw NotFoundException when no location matches the locationNumber', async () => {
       locationRepo.findOne.mockResolvedValue(null);
 
-      const error = await service.findById(999).catch((e) => e);
+      const error = await service.findFlatByNumber('Z-99-99').catch((e) => e);
       expect(error).toBeInstanceOf(NotFoundException);
-      expect(error.message).toMatch(/location with id 999 not found/i);
+      expect(error.message).toMatch(/'Z-99-99' not found/i);
     });
 
-    it('should return the location when the id exists', async () => {
+    it('should return the flat location (no tree load) when locationNumber exists', async () => {
       const location = makeLocation({ id: 42, locationNumber: 'A-01' });
       locationRepo.findOne.mockResolvedValue(location);
 
-      const result = await service.findById(42);
+      const result = await service.findFlatByNumber('A-01');
 
       expect(result).toBe(location);
-      expect(locationRepo.findOne).toHaveBeenCalledWith({ where: { id: 42 } });
+      expect(locationRepo.findOne).toHaveBeenCalledWith({
+        where: { locationNumber: 'A-01' },
+      });
     });
   });
 
@@ -625,7 +627,10 @@ describe('LocationsService', () => {
 
     it('should update openTime when openTime is provided', async () => {
       const location = makeLocation({ id: 1 });
-      const deptConfig = makeDeptConfig({ id: 1, openTime: 'Mon to Fri (9AM to 6PM)' });
+      const deptConfig = makeDeptConfig({
+        id: 1,
+        openTime: 'Mon to Fri (9AM to 6PM)',
+      });
       const savedConfig = makeDeptConfig({ id: 1, openTime: 'Always open' });
 
       locationRepo.findOne.mockResolvedValue(location);
@@ -684,7 +689,10 @@ describe('LocationsService', () => {
       locationDepartmentRepo.findOne.mockResolvedValue(deptConfig);
       locationDepartmentRepo.save.mockResolvedValue(savedConfig);
 
-      const dto: UpdateLocationDepartmentDto = { capacity: 50, openTime: 'Always open' };
+      const dto: UpdateLocationDepartmentDto = {
+        capacity: 50,
+        openTime: 'Always open',
+      };
       const result = await service.updateDepartment('A-01-01', 'EFM', dto);
 
       expect(deptConfig.capacity).toBe(50);

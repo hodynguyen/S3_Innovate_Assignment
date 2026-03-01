@@ -6,18 +6,28 @@ import {
   Logger,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { InjectDataSource } from '@nestjs/typeorm';
+import { Repository, DataSource, EntityManager } from 'typeorm';
 import { Booking } from './entities/booking.entity';
 import { LocationDepartment } from '../locations/entities/location-department.entity';
 import { CreateBookingDto } from './dto/create-booking.dto';
+import { PaginateBookingDto } from './dto/paginate-booking.dto';
 import { LocationsService } from '../locations/locations.service';
 import { isWithinOpenTime } from '../common/utils/open-time.parser';
+
+export interface PaginatedBookings {
+  data: Booking[];
+  total: number;
+  page: number;
+  limit: number;
+}
 
 @Injectable()
 export class BookingsService {
   private readonly logger = new Logger(BookingsService.name);
 
   constructor(
+    @InjectDataSource() private readonly dataSource: DataSource,
     @InjectRepository(Booking)
     private readonly bookingRepo: Repository<Booking>,
     @InjectRepository(LocationDepartment)
@@ -28,7 +38,9 @@ export class BookingsService {
   async create(dto: CreateBookingDto): Promise<Booking> {
     this.logger.log(`Creating booking for location: ${dto.locationNumber}`);
 
-    const location = await this.locationsService.findOne(dto.locationNumber);
+    const location = await this.locationsService.findFlatByNumber(
+      dto.locationNumber,
+    );
 
     // Temporal sanity: startTime must be strictly before endTime
     const startDate = new Date(dto.startTime);
@@ -58,50 +70,75 @@ export class BookingsService {
 
     // Open time validation: both start and end must fall within the open window
     if (deptConfig.openTime) {
-      if (!isWithinOpenTime(deptConfig.openTime, startDate)) {
+      let startOk: boolean;
+      let endOk: boolean;
+      try {
+        startOk = isWithinOpenTime(deptConfig.openTime, startDate);
+        endOk = isWithinOpenTime(deptConfig.openTime, endDate);
+      } catch {
+        throw new BadRequestException(
+          `Invalid openTime format for '${dto.locationNumber}' / '${dto.department}'`,
+        );
+      }
+      if (!startOk) {
         throw new BadRequestException(
           `Booking start time is outside open hours for '${dto.locationNumber}' / '${dto.department}' (${deptConfig.openTime})`,
         );
       }
-      if (!isWithinOpenTime(deptConfig.openTime, endDate)) {
+      if (!endOk) {
         throw new BadRequestException(
           `Booking end time is outside open hours for '${dto.locationNumber}' / '${dto.department}' (${deptConfig.openTime})`,
         );
       }
     }
 
-    // Overlap check: reject if another booking at the same location overlaps this time window
-    const overlapping = await this.bookingRepo
-      .createQueryBuilder('booking')
-      .where('booking.locationId = :locationId', { locationId: location.id })
-      .andWhere('booking.startTime < :endTime', { endTime: endDate })
-      .andWhere('booking.endTime > :startTime', { startTime: startDate })
-      .getOne();
+    // Overlap check + save in a SERIALIZABLE transaction to prevent race conditions
+    return this.dataSource.transaction(
+      'SERIALIZABLE',
+      async (manager: EntityManager) => {
+        const bookingRepo = manager.getRepository(Booking);
 
-    if (overlapping) {
-      throw new ConflictException(
-        `Location '${dto.locationNumber}' is already booked from ${overlapping.startTime.toISOString()} to ${overlapping.endTime.toISOString()}`,
-      );
-    }
+        const overlapping = await bookingRepo
+          .createQueryBuilder('booking')
+          .where('booking.locationId = :locationId', {
+            locationId: location.id,
+          })
+          .andWhere('booking.startTime < :endTime', { endTime: endDate })
+          .andWhere('booking.endTime > :startTime', { startTime: startDate })
+          .getOne();
 
-    const booking = this.bookingRepo.create({
-      location,
-      department: dto.department,
-      attendees: dto.attendees,
-      startTime: startDate,
-      endTime: endDate,
-    });
+        if (overlapping) {
+          throw new ConflictException(
+            `Location '${dto.locationNumber}' is already booked from ${overlapping.startTime.toISOString()} to ${overlapping.endTime.toISOString()}`,
+          );
+        }
 
-    const saved = await this.bookingRepo.save(booking);
-    this.logger.log(
-      `Booking created: id=${saved.id} for ${dto.locationNumber}`,
+        const booking = bookingRepo.create({
+          location,
+          department: dto.department,
+          attendees: dto.attendees,
+          startTime: startDate,
+          endTime: endDate,
+        });
+
+        const saved = await bookingRepo.save(booking);
+        this.logger.log(
+          `Booking created: id=${saved.id} for ${dto.locationNumber}`,
+        );
+        return saved;
+      },
     );
-    return saved;
   }
 
-  async findAll(): Promise<Booking[]> {
-    this.logger.log('Fetching all bookings');
-    return this.bookingRepo.find({ order: { createdAt: 'DESC' } });
+  async findAll(dto: PaginateBookingDto): Promise<PaginatedBookings> {
+    this.logger.log(`Fetching bookings page=${dto.page} limit=${dto.limit}`);
+    const { page = 1, limit = 20 } = dto;
+    const [data, total] = await this.bookingRepo.findAndCount({
+      take: limit,
+      skip: (page - 1) * limit,
+      order: { createdAt: 'DESC' },
+    });
+    return { data, total, page, limit };
   }
 
   async findOne(id: number): Promise<Booking> {
@@ -110,5 +147,14 @@ export class BookingsService {
       throw new NotFoundException(`Booking with id ${id} not found`);
     }
     return booking;
+  }
+
+  async remove(id: number): Promise<void> {
+    const booking = await this.bookingRepo.findOne({ where: { id } });
+    if (!booking) {
+      throw new NotFoundException(`Booking with id ${id} not found`);
+    }
+    await this.bookingRepo.remove(booking);
+    this.logger.log(`Booking removed: id=${id}`);
   }
 }

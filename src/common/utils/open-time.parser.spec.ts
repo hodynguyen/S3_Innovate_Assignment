@@ -24,7 +24,7 @@ function makeLocalDate(dayOfWeek: number, hour: number, minute = 0): Date {
 const SUN = 0;
 const MON = 1;
 // const TUE = 2;
-// const WED = 3;
+const WED = 3;
 // const THU = 4;
 const FRI = 5;
 const SAT = 6;
@@ -153,6 +153,18 @@ describe('isWithinOpenTime()', () => {
 
     it('should return false on Monday at 7PM (after close)', () => {
       expect(isWithinOpenTime(openTime, makeLocalDate(MON, 19))).toBe(false);
+    });
+
+    it('should return true on Wednesday at 10AM (mid-week)', () => {
+      expect(isWithinOpenTime(openTime, makeLocalDate(WED, 10))).toBe(true);
+    });
+
+    it('should return true on Wednesday at exactly 9AM (boundary)', () => {
+      expect(isWithinOpenTime(openTime, makeLocalDate(WED, 9, 0))).toBe(true);
+    });
+
+    it('should return false on Wednesday at 6PM (end-exclusive)', () => {
+      expect(isWithinOpenTime(openTime, makeLocalDate(WED, 18, 0))).toBe(false);
     });
 
     it('should return false on Saturday (not in Mon–Fri range)', () => {

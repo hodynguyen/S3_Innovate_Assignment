@@ -94,10 +94,12 @@ export class LocationsService {
     }
   }
 
-  async findById(id: number): Promise<Location> {
-    const location = await this.locationRepo.findOne({ where: { id } });
+  async findFlatByNumber(locationNumber: string): Promise<Location> {
+    const location = await this.locationRepo.findOne({
+      where: { locationNumber },
+    });
     if (!location) {
-      throw new NotFoundException(`Location with id ${id} not found`);
+      throw new NotFoundException(`Location '${locationNumber}' not found`);
     }
     return location;
   }

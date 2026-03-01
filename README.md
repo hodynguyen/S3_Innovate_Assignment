@@ -339,6 +339,7 @@ Full interactive documentation is available at `http://localhost:3000/api` (Swag
 | `DELETE` | `/locations/:locationNumber`                            | Delete a location and cascade to all descendants + bookings |
 | `GET`    | `/locations/:locationNumber/departments`                | List all department configs for a location                  |
 | `POST`   | `/locations/:locationNumber/departments`                | Add a department config to a location                       |
+| `PATCH`  | `/locations/:locationNumber/departments/:department`    | Update capacity or openTime for a department config         |
 | `DELETE` | `/locations/:locationNumber/departments/:department`    | Remove a department config from a location                  |
 
 ### Bookings

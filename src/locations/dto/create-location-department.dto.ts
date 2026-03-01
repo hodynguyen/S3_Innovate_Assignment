@@ -1,5 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { IsString, IsNotEmpty, IsOptional, IsInt, Min } from 'class-validator';
+import { IsValidOpenTimeFormat } from '../../common/validators/is-valid-open-time-format.validator';
 
 export class CreateLocationDepartmentDto {
   @ApiProperty({ example: 'EFM', description: 'Department code' })
@@ -22,5 +23,6 @@ export class CreateLocationDepartmentDto {
   })
   @IsString()
   @IsOptional()
+  @IsValidOpenTimeFormat()
   openTime?: string;
 }

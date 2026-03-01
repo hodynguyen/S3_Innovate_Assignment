@@ -139,12 +139,16 @@ describe('isWithinOpenTime()', () => {
       expect(isWithinOpenTime(openTime, makeLocalDate(MON, 10))).toBe(true);
     });
 
-    it('should return true on Friday at 5:59PM (last valid minute)', () => {
+    it('should return true on Friday at 5:59PM (one minute before close)', () => {
       expect(isWithinOpenTime(openTime, makeLocalDate(FRI, 17, 59))).toBe(true);
     });
 
-    it('should return false on Monday at exactly 6PM (end-exclusive boundary)', () => {
-      expect(isWithinOpenTime(openTime, makeLocalDate(MON, 18, 0))).toBe(false);
+    it('should return true on Monday at exactly 6PM (inclusive end: booking may end at closing time)', () => {
+      expect(isWithinOpenTime(openTime, makeLocalDate(MON, 18, 0))).toBe(true);
+    });
+
+    it('should return false on Monday at 6:01PM (one minute after close)', () => {
+      expect(isWithinOpenTime(openTime, makeLocalDate(MON, 18, 1))).toBe(false);
     });
 
     it('should return false on Monday at 8:59AM (before open)', () => {
@@ -163,8 +167,8 @@ describe('isWithinOpenTime()', () => {
       expect(isWithinOpenTime(openTime, makeLocalDate(WED, 9, 0))).toBe(true);
     });
 
-    it('should return false on Wednesday at 6PM (end-exclusive)', () => {
-      expect(isWithinOpenTime(openTime, makeLocalDate(WED, 18, 0))).toBe(false);
+    it('should return true on Wednesday at exactly 6PM (inclusive end)', () => {
+      expect(isWithinOpenTime(openTime, makeLocalDate(WED, 18, 0))).toBe(true);
     });
 
     it('should return false on Saturday (not in Mon–Fri range)', () => {
@@ -194,8 +198,8 @@ describe('isWithinOpenTime()', () => {
       expect(isWithinOpenTime(openTime, makeLocalDate(SUN, 10))).toBe(false);
     });
 
-    it('should return false on Saturday at 6PM (end-exclusive)', () => {
-      expect(isWithinOpenTime(openTime, makeLocalDate(SAT, 18, 0))).toBe(false);
+    it('should return true on Saturday at exactly 6PM (inclusive end)', () => {
+      expect(isWithinOpenTime(openTime, makeLocalDate(SAT, 18, 0))).toBe(true);
     });
   });
 
@@ -213,8 +217,8 @@ describe('isWithinOpenTime()', () => {
       expect(isWithinOpenTime(openTime, makeLocalDate(SAT, 10))).toBe(true);
     });
 
-    it('should return false on Sunday at exactly 6PM (end-exclusive)', () => {
-      expect(isWithinOpenTime(openTime, makeLocalDate(SUN, 18, 0))).toBe(false);
+    it('should return true on Sunday at exactly 6PM (inclusive end)', () => {
+      expect(isWithinOpenTime(openTime, makeLocalDate(SUN, 18, 0))).toBe(true);
     });
 
     it('should return false on any day before 9AM', () => {
@@ -232,10 +236,10 @@ describe('isWithinOpenTime()', () => {
       ).toBe(true);
     });
 
-    it('should treat exactly 6PM (18:00) as invalid (exclusive end)', () => {
+    it('should treat exactly 6PM (18:00) as valid (inclusive end)', () => {
       expect(
         isWithinOpenTime('Mon to Fri (9AM to 6PM)', makeLocalDate(FRI, 18, 0)),
-      ).toBe(false);
+      ).toBe(true);
     });
 
     it('should treat 8:59 as invalid (just before start)', () => {

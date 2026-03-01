@@ -104,10 +104,12 @@ export function isWithinOpenTime(openTime: string, date: Date): boolean {
 
   if (!allowedDays.has(day)) return false;
 
-  // Check hour window (endHour is exclusive — "9AM to 6PM" means < 18:00)
+  // Check hour window: startHour inclusive, endHour inclusive.
+  // "9AM to 6PM" means >= 09:00 and <= 18:00.
+  // A booking ending exactly at closing time is valid (the room is released).
   const totalMinutes = hour * 60 + minutes;
   const startMinutes = parsed.startHour * 60;
   const endMinutes = parsed.endHour * 60;
 
-  return totalMinutes >= startMinutes && totalMinutes < endMinutes;
+  return totalMinutes >= startMinutes && totalMinutes <= endMinutes;
 }

@@ -143,6 +143,15 @@ export class LocationsService {
   // Department config sub-resource
   // ---------------------------------------------------------------------------
 
+  async findDepartmentConfig(
+    locationId: number,
+    department: string,
+  ): Promise<LocationDepartment | null> {
+    return this.locationDepartmentRepo.findOne({
+      where: { locationId, department },
+    });
+  }
+
   async findDepartments(locationNumber: string): Promise<LocationDepartment[]> {
     this.logger.log(`Fetching departments for location: ${locationNumber}`);
     const location = await this.locationRepo.findOne({

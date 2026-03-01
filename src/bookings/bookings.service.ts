@@ -5,11 +5,9 @@ import {
   ConflictException,
   Logger,
 } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { InjectDataSource } from '@nestjs/typeorm';
-import { Repository, DataSource, EntityManager } from 'typeorm';
+import { InjectRepository, InjectDataSource } from '@nestjs/typeorm';
+import { Repository, DataSource, EntityManager, QueryFailedError } from 'typeorm';
 import { Booking } from './entities/booking.entity';
-import { LocationDepartment } from '../locations/entities/location-department.entity';
 import { CreateBookingDto } from './dto/create-booking.dto';
 import { PaginateBookingDto } from './dto/paginate-booking.dto';
 import { LocationsService } from '../locations/locations.service';
@@ -30,8 +28,6 @@ export class BookingsService {
     @InjectDataSource() private readonly dataSource: DataSource,
     @InjectRepository(Booking)
     private readonly bookingRepo: Repository<Booking>,
-    @InjectRepository(LocationDepartment)
-    private readonly locationDepartmentRepo: Repository<LocationDepartment>,
     private readonly locationsService: LocationsService,
   ) {}
 
@@ -52,9 +48,10 @@ export class BookingsService {
     }
 
     // Look up the LocationDepartment row for this (location, department) pair
-    const deptConfig = await this.locationDepartmentRepo.findOne({
-      where: { locationId: location.id, department: dto.department },
-    });
+    const deptConfig = await this.locationsService.findDepartmentConfig(
+      location.id,
+      dto.department,
+    );
     if (!deptConfig) {
       throw new BadRequestException(
         `Location '${dto.locationNumber}' does not serve department '${dto.department}'`,
@@ -93,41 +90,55 @@ export class BookingsService {
     }
 
     // Overlap check + save in a SERIALIZABLE transaction to prevent race conditions
-    return this.dataSource.transaction(
-      'SERIALIZABLE',
-      async (manager: EntityManager) => {
-        const bookingRepo = manager.getRepository(Booking);
+    try {
+      return await this.dataSource.transaction(
+        'SERIALIZABLE',
+        async (manager: EntityManager) => {
+          const bookingRepo = manager.getRepository(Booking);
 
-        const overlapping = await bookingRepo
-          .createQueryBuilder('booking')
-          .where('booking.locationId = :locationId', {
-            locationId: location.id,
-          })
-          .andWhere('booking.startTime < :endTime', { endTime: endDate })
-          .andWhere('booking.endTime > :startTime', { startTime: startDate })
-          .getOne();
+          const overlapping = await bookingRepo
+            .createQueryBuilder('booking')
+            .where('booking.locationId = :locationId', {
+              locationId: location.id,
+            })
+            .andWhere('booking.startTime < :endTime', { endTime: endDate })
+            .andWhere('booking.endTime > :startTime', { startTime: startDate })
+            .getOne();
 
-        if (overlapping) {
-          throw new ConflictException(
-            `Location '${dto.locationNumber}' is already booked from ${overlapping.startTime.toISOString()} to ${overlapping.endTime.toISOString()}`,
+          if (overlapping) {
+            throw new ConflictException(
+              `Location '${dto.locationNumber}' is already booked from ${overlapping.startTime.toISOString()} to ${overlapping.endTime.toISOString()}`,
+            );
+          }
+
+          const booking = bookingRepo.create({
+            location,
+            department: dto.department,
+            attendees: dto.attendees,
+            startTime: startDate,
+            endTime: endDate,
+          });
+
+          const saved = await bookingRepo.save(booking);
+          this.logger.log(
+            `Booking created: id=${saved.id} for ${dto.locationNumber}`,
           );
-        }
-
-        const booking = bookingRepo.create({
-          location,
-          department: dto.department,
-          attendees: dto.attendees,
-          startTime: startDate,
-          endTime: endDate,
-        });
-
-        const saved = await bookingRepo.save(booking);
-        this.logger.log(
-          `Booking created: id=${saved.id} for ${dto.locationNumber}`,
+          return saved;
+        },
+      );
+    } catch (err) {
+      // PostgreSQL serialization failure: two concurrent transactions conflicted.
+      // Surface as 409 instead of letting it propagate as HTTP 500.
+      if (
+        err instanceof QueryFailedError &&
+        (err.driverError as { code?: string })?.code === '40001'
+      ) {
+        throw new ConflictException(
+          `Booking could not be saved due to a concurrent conflict — please retry`,
         );
-        return saved;
-      },
-    );
+      }
+      throw err;
+    }
   }
 
   async findAll(dto: PaginateBookingDto): Promise<PaginatedBookings> {

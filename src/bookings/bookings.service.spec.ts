@@ -5,7 +5,7 @@ import {
   ConflictException,
   NotFoundException,
 } from '@nestjs/common';
-import { Repository } from 'typeorm';
+import { QueryFailedError, Repository } from 'typeorm';
 import { BookingsService } from './bookings.service';
 import { Booking } from './entities/booking.entity';
 import { LocationDepartment } from '../locations/entities/location-department.entity';
@@ -89,8 +89,12 @@ function makeDto(overrides: Partial<CreateBookingDto> = {}): CreateBookingDto {
 describe('BookingsService', () => {
   let service: BookingsService;
   let bookingRepo: jest.Mocked<Repository<Booking>>;
-  let locationDepartmentRepo: jest.Mocked<Repository<LocationDepartment>>;
-  let locationsService: jest.Mocked<LocationsService>;
+  let locationsService: jest.Mocked<
+    Pick<LocationsService, 'findFlatByNumber' | 'findDepartmentConfig'>
+  >;
+  // mockDataSource is captured at module-setup time so individual tests can
+  // override .transaction() to simulate error scenarios.
+  let mockDataSource: { transaction: jest.Mock };
 
   beforeEach(async () => {
     // Create the booking repo value first so the mock manager can reference it
@@ -108,7 +112,7 @@ describe('BookingsService', () => {
       getRepository: jest.fn().mockReturnValue(bookingRepoValue),
     };
 
-    const mockDataSource = {
+    mockDataSource = {
       transaction: jest
         .fn()
         .mockImplementation(
@@ -127,15 +131,10 @@ describe('BookingsService', () => {
           useValue: bookingRepoValue,
         },
         {
-          provide: getRepositoryToken(LocationDepartment),
-          useValue: {
-            findOne: jest.fn(),
-          },
-        },
-        {
           provide: LocationsService,
           useValue: {
             findFlatByNumber: jest.fn(),
+            findDepartmentConfig: jest.fn(),
           },
         },
         {
@@ -147,7 +146,6 @@ describe('BookingsService', () => {
 
     service = module.get<BookingsService>(BookingsService);
     bookingRepo = module.get(getRepositoryToken(Booking));
-    locationDepartmentRepo = module.get(getRepositoryToken(LocationDepartment));
     locationsService = module.get(LocationsService);
 
     // Reset the open-time parser mock before each test
@@ -165,7 +163,7 @@ describe('BookingsService', () => {
 
     it('should throw BadRequestException when startTime equals endTime', async () => {
       locationsService.findFlatByNumber.mockResolvedValue(makeLocation());
-      locationDepartmentRepo.findOne.mockResolvedValue(makeDeptConfig());
+      locationsService.findDepartmentConfig.mockResolvedValue(makeDeptConfig());
 
       const dto = makeDto({
         startTime: '2026-03-10T09:00:00.000Z',
@@ -179,7 +177,7 @@ describe('BookingsService', () => {
 
     it('should throw BadRequestException when startTime is after endTime', async () => {
       locationsService.findFlatByNumber.mockResolvedValue(makeLocation());
-      locationDepartmentRepo.findOne.mockResolvedValue(makeDeptConfig());
+      locationsService.findDepartmentConfig.mockResolvedValue(makeDeptConfig());
 
       const dto = makeDto({
         startTime: '2026-03-10T11:00:00.000Z',
@@ -197,7 +195,7 @@ describe('BookingsService', () => {
 
     it('should throw BadRequestException when no LocationDepartment row exists for the requested department', async () => {
       locationsService.findFlatByNumber.mockResolvedValue(makeLocation());
-      locationDepartmentRepo.findOne.mockResolvedValue(null); // no deptConfig found
+      locationsService.findDepartmentConfig.mockResolvedValue(null); // no deptConfig found
 
       await expect(service.create(makeDto())).rejects.toThrow(
         BadRequestException,
@@ -209,7 +207,7 @@ describe('BookingsService', () => {
 
     it('should include locationNumber and department in the error message when deptConfig is not found', async () => {
       locationsService.findFlatByNumber.mockResolvedValue(makeLocation());
-      locationDepartmentRepo.findOne.mockResolvedValue(null);
+      locationsService.findDepartmentConfig.mockResolvedValue(null);
 
       const dto = makeDto({ department: 'HR' });
       const error = await service.create(dto).catch((e) => e);
@@ -224,7 +222,7 @@ describe('BookingsService', () => {
 
     it('should throw BadRequestException when attendees exceed deptConfig capacity', async () => {
       locationsService.findFlatByNumber.mockResolvedValue(makeLocation());
-      locationDepartmentRepo.findOne.mockResolvedValue(
+      locationsService.findDepartmentConfig.mockResolvedValue(
         makeDeptConfig({ capacity: 10 }),
       );
 
@@ -238,7 +236,7 @@ describe('BookingsService', () => {
 
     it('should NOT throw for attendees exactly equal to deptConfig capacity', async () => {
       locationsService.findFlatByNumber.mockResolvedValue(makeLocation());
-      locationDepartmentRepo.findOne.mockResolvedValue(
+      locationsService.findDepartmentConfig.mockResolvedValue(
         makeDeptConfig({ capacity: 10 }),
       );
       mockIsWithinOpenTime.mockReturnValue(true);
@@ -258,7 +256,7 @@ describe('BookingsService', () => {
 
     it('should throw BadRequestException when startTime is outside deptConfig openTime window', async () => {
       locationsService.findFlatByNumber.mockResolvedValue(makeLocation());
-      locationDepartmentRepo.findOne.mockResolvedValue(makeDeptConfig());
+      locationsService.findDepartmentConfig.mockResolvedValue(makeDeptConfig());
       // First call (startTime) → false; second call (endTime) would not be reached
       mockIsWithinOpenTime.mockReturnValueOnce(false);
 
@@ -272,7 +270,7 @@ describe('BookingsService', () => {
 
     it('should throw BadRequestException when endTime is outside deptConfig openTime window', async () => {
       locationsService.findFlatByNumber.mockResolvedValue(makeLocation());
-      locationDepartmentRepo.findOne.mockResolvedValue(makeDeptConfig());
+      locationsService.findDepartmentConfig.mockResolvedValue(makeDeptConfig());
       // startTime passes, endTime fails — set up the two-call sequence once
       mockIsWithinOpenTime
         .mockReturnValueOnce(true) // startTime OK
@@ -285,7 +283,7 @@ describe('BookingsService', () => {
 
     it('should throw BadRequestException when openTime format is invalid', async () => {
       locationsService.findFlatByNumber.mockResolvedValue(makeLocation());
-      locationDepartmentRepo.findOne.mockResolvedValue(makeDeptConfig());
+      locationsService.findDepartmentConfig.mockResolvedValue(makeDeptConfig());
       mockIsWithinOpenTime.mockImplementation(() => {
         throw new Error('Unrecognized openTime format');
       });
@@ -297,7 +295,7 @@ describe('BookingsService', () => {
 
     it('should NOT check openTime when deptConfig.openTime is null', async () => {
       locationsService.findFlatByNumber.mockResolvedValue(makeLocation());
-      locationDepartmentRepo.findOne.mockResolvedValue(
+      locationsService.findDepartmentConfig.mockResolvedValue(
         makeDeptConfig({ openTime: null }),
       );
       bookingRepo.createQueryBuilder.mockReturnValue(makeNoOverlapQB());
@@ -319,7 +317,7 @@ describe('BookingsService', () => {
     it('should create and return a booking when all validations pass', async () => {
       const location = makeLocation();
       locationsService.findFlatByNumber.mockResolvedValue(location);
-      locationDepartmentRepo.findOne.mockResolvedValue(makeDeptConfig());
+      locationsService.findDepartmentConfig.mockResolvedValue(makeDeptConfig());
       mockIsWithinOpenTime.mockReturnValue(true);
       bookingRepo.createQueryBuilder.mockReturnValue(makeNoOverlapQB());
 
@@ -349,7 +347,7 @@ describe('BookingsService', () => {
 
     it('should pass startTime and endTime as Date objects to bookingRepo.create()', async () => {
       locationsService.findFlatByNumber.mockResolvedValue(makeLocation());
-      locationDepartmentRepo.findOne.mockResolvedValue(makeDeptConfig());
+      locationsService.findDepartmentConfig.mockResolvedValue(makeDeptConfig());
       mockIsWithinOpenTime.mockReturnValue(true);
       bookingRepo.createQueryBuilder.mockReturnValue(makeNoOverlapQB());
 
@@ -372,7 +370,7 @@ describe('BookingsService', () => {
 
     it('should allow booking at any time for a deptConfig with "Always open" openTime', async () => {
       locationsService.findFlatByNumber.mockResolvedValue(makeLocation());
-      locationDepartmentRepo.findOne.mockResolvedValue(
+      locationsService.findDepartmentConfig.mockResolvedValue(
         makeDeptConfig({ openTime: 'Always open' }),
       );
 
@@ -401,7 +399,7 @@ describe('BookingsService', () => {
 
     it('should throw ConflictException when an overlapping booking exists', async () => {
       locationsService.findFlatByNumber.mockResolvedValue(makeLocation());
-      locationDepartmentRepo.findOne.mockResolvedValue(makeDeptConfig());
+      locationsService.findDepartmentConfig.mockResolvedValue(makeDeptConfig());
       mockIsWithinOpenTime.mockReturnValue(true);
 
       const existingBooking = {
@@ -428,7 +426,7 @@ describe('BookingsService', () => {
     it('should proceed normally when no overlapping booking exists', async () => {
       const location = makeLocation();
       locationsService.findFlatByNumber.mockResolvedValue(location);
-      locationDepartmentRepo.findOne.mockResolvedValue(makeDeptConfig());
+      locationsService.findDepartmentConfig.mockResolvedValue(makeDeptConfig());
       mockIsWithinOpenTime.mockReturnValue(true);
       bookingRepo.createQueryBuilder.mockReturnValue(makeNoOverlapQB());
 
@@ -438,6 +436,45 @@ describe('BookingsService', () => {
 
       const result = await service.create(makeDto());
       expect(result).toBe(savedBooking);
+    });
+
+    // -----------------------------------------------------------------------
+    // PostgreSQL serialization failure (40001) → 409 ConflictException
+    // -----------------------------------------------------------------------
+
+    it('should throw ConflictException when transaction fails with PostgreSQL error 40001', async () => {
+      locationsService.findFlatByNumber.mockResolvedValue(makeLocation());
+      locationsService.findDepartmentConfig.mockResolvedValue(makeDeptConfig());
+      mockIsWithinOpenTime.mockReturnValue(true);
+
+      // Simulate the SERIALIZABLE transaction being aborted by PostgreSQL
+      const pgError = new QueryFailedError('SELECT 1', [], {
+        code: '40001',
+        message: 'could not serialize access due to concurrent update',
+      } as unknown as Error);
+
+      mockDataSource.transaction.mockRejectedValueOnce(pgError);
+
+      const error = await service.create(makeDto()).catch((e) => e);
+      expect(error).toBeInstanceOf(ConflictException);
+      expect(error.message).toMatch(/concurrent conflict/i);
+    });
+
+    it('should re-throw non-40001 QueryFailedErrors as-is', async () => {
+      locationsService.findFlatByNumber.mockResolvedValue(makeLocation());
+      locationsService.findDepartmentConfig.mockResolvedValue(makeDeptConfig());
+      mockIsWithinOpenTime.mockReturnValue(true);
+
+      const pgError = new QueryFailedError('INSERT', [], {
+        code: '23505', // unique violation — should not be swallowed
+        message: 'duplicate key value violates unique constraint',
+      } as unknown as Error);
+
+      mockDataSource.transaction.mockRejectedValueOnce(pgError);
+
+      await expect(service.create(makeDto())).rejects.toBeInstanceOf(
+        QueryFailedError,
+      );
     });
   });
 

@@ -22,7 +22,7 @@ A RESTful API backend that manages a **hierarchical tree of building locations**
 
 This API serves two domains:
 
-**Location Management** — Locations are modelled as a recursive adjacency-list tree (Building → Floor → Room → Sub-room). Each node carries a unique human-readable identifier (`locationNumber`), optional department ownership, occupancy capacity, and an operating-hours window (`openTime`). Standard CRUD operations are exposed for managing the full tree.
+**Location Management** — Locations are modelled as a recursive closure-table tree (Building → Floor → Room → Sub-room). Each node carries a unique human-readable identifier (`locationNumber`). Department ownership, occupancy capacity, and operating-hours windows are stored in a separate `location_department` join table, allowing a single location to be associated with multiple departments — each with its own capacity and open-time configuration. Standard CRUD operations are exposed for managing the full tree and its department configs.
 
 **Booking Management** — A booking reserves a specific location for a given time window. Before persisting a booking the system enforces three business rules: the requester's department must match the location's assigned department, the number of attendees must not exceed the location's capacity, and both the start and end times must fall within the location's `openTime` window.
 
@@ -91,9 +91,10 @@ This API serves two domains:
 ```
 AppModule
 ├── LocationsModule
-│   ├── LocationsController  — HTTP routing for /locations
-│   ├── LocationsService     — CRUD + tree operations via TreeRepository
-│   └── Location entity      — adjacency-list tree node
+│   ├── LocationsController    — HTTP routing for /locations and department sub-resource
+│   ├── LocationsService       — CRUD + tree operations via TreeRepository
+│   ├── Location entity        — closure-table tree node (location + location_closure tables)
+│   └── LocationDepartment entity — join table for per-department capacity and openTime
 └── BookingsModule
     ├── BookingsController   — HTTP routing for /bookings
     ├── BookingsService      — booking creation with rule enforcement
@@ -128,19 +129,16 @@ BookingsService.create()
   ├─2─ startTime < endTime?
   │       └── no ──────────────────────────────► 400 Bad Request
   │
-  ├─3─ location.department != null && location.capacity != null?
-  │       └── no (not bookable) ───────────────► 400 Bad Request
+  ├─3─ location has a matching departmentConfig for dto.department?
+  │       └── no (not bookable / dept mismatch)► 400 Bad Request
   │
-  ├─4─ location.department === dto.department?
-  │       └── no (dept mismatch) ─────────────► 400 Bad Request
-  │
-  ├─5─ dto.attendees <= location.capacity?
+  ├─4─ dto.attendees <= deptConfig.capacity?
   │       └── no (over capacity) ─────────────► 400 Bad Request
   │
-  ├─6─ isWithinOpenTime(openTime, startTime)?
+  ├─5─ isWithinOpenTime(deptConfig.openTime, startTime)?
   │       └── no ──────────────────────────────► 400 Bad Request
   │
-  ├─7─ isWithinOpenTime(openTime, endTime)?
+  ├─6─ isWithinOpenTime(deptConfig.openTime, endTime)?
   │       └── no ──────────────────────────────► 400 Bad Request
   │
   ▼
@@ -156,7 +154,7 @@ bookingRepo.save(booking)
 
 ### 4.1 Entity-Relationship Overview
 
-The database has two tables. `location` is self-referential (adjacency list) — each row optionally points to a parent row in the same table. `booking` has a many-to-one relationship with `location` — each booking targets exactly one location, and deleting a location cascades to its bookings.
+The database has four tables. `location` is a self-referential closure-table tree — TypeORM manages an auxiliary `location_closure` table automatically to track all ancestor/descendant pairs. `location_department` is a join table that links a location to one or more departments, each with its own capacity and open-time configuration. `booking` has a many-to-one relationship with `location` — each booking targets exactly one location, and deleting a location cascades to its bookings.
 
 ### 4.2 `location` Table
 
@@ -166,16 +164,26 @@ The database has two tables. `location` is self-referential (adjacency list) —
 | `locationNumber` | `varchar`                    | NOT NULL, UNIQUE, indexed            | Human-readable identifier, used in URL paths   |
 | `locationName`   | `varchar`                    | NOT NULL                             | Display name (e.g. "Meeting Room 1")           |
 | `building`       | `varchar`                    | NOT NULL                             | Building code (e.g. "A", "B")                  |
-| `department`     | `varchar`                    | nullable                             | Owning department; null for structural nodes   |
-| `capacity`       | `integer`                    | nullable                             | Max occupancy; null for non-bookable nodes     |
-| `openTime`       | `varchar`                    | nullable                             | Operating hours string (see §5.2)              |
-| `parentId`       | `integer`                    | FK → `location.id`, ON DELETE CASCADE| null for root/building-level nodes             |
 | `createdAt`      | `timestamp with time zone`   | NOT NULL, default now()              | Managed by TypeORM `@CreateDateColumn`         |
 | `updatedAt`      | `timestamp with time zone`   | NOT NULL, default now()              | Managed by TypeORM `@UpdateDateColumn`         |
 
-**Tree strategy:** TypeORM adjacency-list (`@Tree('adjacency-list')`). The `parentId` foreign key is managed automatically by `@TreeParent` / `@TreeChildren`. Deleting a parent cascades to all descendants.
+**Tree strategy:** TypeORM closure-table (`@Tree('closure-table')`). TypeORM automatically maintains a companion `location_closure` table that stores all ancestor/descendant pairs, enabling efficient subtree queries. The `@TreeParent` / `@TreeChildren` decorators manage the relationship. Deleting a parent cascades to all descendants.
 
-### 4.3 `booking` Table
+### 4.3 `location_department` Table
+
+Department ownership, capacity, and open-time are stored here rather than on `location`, so a single location can serve multiple departments with independent configurations.
+
+| Column       | Type       | Constraints                                       | Notes                                          |
+|--------------|------------|---------------------------------------------------|------------------------------------------------|
+| `id`         | `integer`  | PK, auto-increment                                | Internal surrogate key                         |
+| `locationId` | `integer`  | FK → `location.id`, NOT NULL, ON DELETE CASCADE   | The owning location                            |
+| `department` | `varchar`  | NOT NULL                                          | Department code (e.g. "EFM", "FSS", "AVS")     |
+| `capacity`   | `integer`  | NOT NULL                                          | Max occupancy for this dept at this location   |
+| `openTime`   | `varchar`  | nullable                                          | Operating hours string (see §5.2)              |
+
+**Unique constraint:** `(locationId, department)` — a department can only be registered once per location.
+
+### 4.4 `booking` Table
 
 | Column       | Type                        | Constraints                               | Notes                                    |
 |--------------|-----------------------------|-------------------------------------------|------------------------------------------|
@@ -187,7 +195,7 @@ The database has two tables. `location` is self-referential (adjacency list) —
 | `endTime`    | `timestamp with time zone`  | NOT NULL                                  | Booking end (UTC ISO 8601 from client)   |
 | `createdAt`  | `timestamp with time zone`  | NOT NULL, default now()                   | Managed by TypeORM `@CreateDateColumn`   |
 
-### 4.4 ASCII ERD
+### 4.5 ASCII ERD
 
 ```
 ┌──────────────────────────────────────────────────────┐
@@ -197,21 +205,33 @@ The database has two tables. `location` is self-referential (adjacency list) —
 │     locationNumber varchar         NOT NULL UNIQUE   │
 │     locationName   varchar         NOT NULL          │
 │     building       varchar         NOT NULL          │
-│     department     varchar         NULL              │
-│     capacity       integer         NULL              │
+│     createdAt      timestamptz     NOT NULL          │
+│     updatedAt      timestamptz     NOT NULL          │
+└───────────────┬──────────────────────────────────────┘
+                │ (closure-table self-reference managed
+                │  by location_closure auxiliary table)
+                │
+                │ 1
+                │ has many
+                ▼ *
+┌──────────────────────────────────────────────────────┐
+│                  location_department                 │
+├──────────────────────────────────────────────────────┤
+│ PK  id             integer         NOT NULL          │
+│ FK  locationId     integer         NOT NULL          │
+│     department     varchar         NOT NULL          │
+│     capacity       integer         NOT NULL          │
 │     openTime       varchar         NULL              │
-│ FK  parentId       integer         NULL ──────┐      │
-│     createdAt      timestamptz     NOT NULL   │      │
-│     updatedAt      timestamptz     NOT NULL   │      │
-└────────────────────────────────────┬─────────┘      │
-                                     │ (self-ref)      │
-                                     └─────────────────┘
-                         (parent-child adjacency list)
+│ UNIQUE (locationId, department)                      │
+└──────────────────────────────────────────────────────┘
 
-                                 │ 1
-                                 │
-                                 │ has many
-                                 ▼ *
+┌──────────────────────────────────────────────────────┐
+│                       location                       │
+│                     (see above)                      │
+└───────────────────────────┬──────────────────────────┘
+                            │ 1
+                            │ has many
+                            ▼ *
 ┌──────────────────────────────────────────────────────┐
 │                       booking                        │
 ├──────────────────────────────────────────────────────┤
@@ -233,52 +253,54 @@ The database has two tables. `location` is self-referential (adjacency list) —
 
 All three rules are enforced by `BookingsService.create()` before any write occurs. Violations return `400 Bad Request` with a descriptive message.
 
-#### Rule 1 — Location Must Be Bookable
+#### Rule 1 — Location Must Be Bookable for the Requested Department
 
-A location is only bookable if it has both a `department` and a `capacity` defined. Structural nodes such as floors and corridors have neither, and are rejected before any other check.
+A location is only bookable if it has a `location_department` entry whose `department` matches the booking's `department`. Structural nodes such as floors and corridors have no department configs and are rejected before any other check.
 
 ```
-location.department != null  AND  location.capacity != null
+location.departmentConfigs.find(dc => dc.department === booking.department) != null
 ```
 
-Example of a non-bookable node: `A-01` (Floor 1) — no department, no capacity.
-Example of a bookable node: `A-01-01` (Meeting Room 1) — department=EFM, capacity=10.
+Example of a non-bookable node: `A-01` (Floor 1) — no department configs at all.
+Example of a bookable node: `A-01-01` (Meeting Room 1) — has a config for department EFM with capacity 10.
 
 #### Rule 2 — Department Matching
 
-The `department` field in the booking request must exactly match the `department` stored on the location.
+The `department` in the booking request must match an entry in the location's `departmentConfigs`. This lookup also serves as the department-match check.
 
 ```
-booking.department === location.department
+deptConfig = location.departmentConfigs.find(dc => dc.department === booking.department)
 ```
 
-| Location       | location.department | booking.department | Result  |
-|----------------|---------------------|--------------------|---------|
-| A-01-01        | EFM                 | EFM                | Allowed |
+| Location       | departmentConfigs   | booking.department | Result   |
+|----------------|---------------------|--------------------|----------|
+| A-01-01        | EFM, (others)       | EFM                | Allowed  |
 | A-01-01        | EFM                 | FSS                | Rejected |
-| B-05-11        | ASS                 | ASS                | Allowed |
+| A-01-02        | FSS, AVS            | AVS                | Allowed  |
+| B-05-11        | ASS                 | ASS                | Allowed  |
 
 #### Rule 3 — Capacity Check
 
-The number of attendees in the booking must not exceed the location's capacity.
+The number of attendees must not exceed the `capacity` defined in the matching `location_department` row.
 
 ```
-booking.attendees <= location.capacity
+booking.attendees <= deptConfig.capacity
 ```
 
-| Location   | capacity | attendees | Result   |
-|------------|----------|-----------|----------|
-| A-01-01    | 10       | 8         | Allowed  |
-| A-01-01    | 10       | 10        | Allowed  |
-| A-01-01    | 10       | 11        | Rejected |
+| Location   | dept | capacity | attendees | Result   |
+|------------|------|----------|-----------|----------|
+| A-01-01    | EFM  | 10       | 8         | Allowed  |
+| A-01-01    | EFM  | 10       | 10        | Allowed  |
+| A-01-01    | EFM  | 10       | 11        | Rejected |
+| A-01-02    | AVS  | 5        | 6         | Rejected |
 
 #### Rule 4 — Open Time Validation
 
-Both `startTime` and `endTime` of the booking must individually fall within the location's `openTime` window. The end-hour boundary is exclusive (e.g. `9AM to 6PM` means `hour < 18`).
+Both `startTime` and `endTime` of the booking must individually fall within the `openTime` window defined in the matching `location_department` row. The end-hour boundary is exclusive (e.g. `9AM to 6PM` means `hour < 18`).
 
 ```
-isWithinOpenTime(location.openTime, startTime) === true
-isWithinOpenTime(location.openTime, endTime)   === true
+isWithinOpenTime(deptConfig.openTime, startTime) === true
+isWithinOpenTime(deptConfig.openTime, endTime)   === true
 ```
 
 ### 5.2 openTime Format
@@ -308,13 +330,16 @@ Full interactive documentation is available at `http://localhost:3000/api` (Swag
 
 ### Locations
 
-| Method   | Path                           | Description                                                 |
-|----------|--------------------------------|-------------------------------------------------------------|
-| `POST`   | `/locations`                   | Create a new location node                                  |
-| `GET`    | `/locations`                   | Get the full nested location tree                           |
-| `GET`    | `/locations/:locationNumber`   | Get a specific location and all its descendants             |
-| `PATCH`  | `/locations/:locationNumber`   | Partially update a location's attributes                    |
-| `DELETE` | `/locations/:locationNumber`   | Delete a location and cascade to all descendants + bookings |
+| Method   | Path                                                    | Description                                                 |
+|----------|---------------------------------------------------------|-------------------------------------------------------------|
+| `POST`   | `/locations`                                            | Create a new location node                                  |
+| `GET`    | `/locations`                                            | Get the full nested location tree (with departmentConfigs)  |
+| `GET`    | `/locations/:locationNumber`                            | Get a location and all descendants (with departmentConfigs) |
+| `PATCH`  | `/locations/:locationNumber`                            | Partially update a location's attributes                    |
+| `DELETE` | `/locations/:locationNumber`                            | Delete a location and cascade to all descendants + bookings |
+| `GET`    | `/locations/:locationNumber/departments`                | List all department configs for a location                  |
+| `POST`   | `/locations/:locationNumber/departments`                | Add a department config to a location                       |
+| `DELETE` | `/locations/:locationNumber/departments/:department`    | Remove a department config from a location                  |
 
 ### Bookings
 
@@ -404,7 +429,7 @@ Load the sample locations and a representative booking from the assignment brief
 npm run seed
 ```
 
-This populates Building A (Floor 1, Meeting Rooms 1 and 2, Lobby, Corridor) and Building B (Floor 5, Utility Room, Sanitary Room, Meeting Toilet, Genset Room, Pantry, Corridor).
+This populates Building A (Floor 1, Meeting Rooms 1 and 2, Lobby, Corridor) and Building B (Floor 5, Utility Room, Sanitary Room, Meeting Toilet, Genset Room, Pantry, Corridor). Meeting Room 2 (A-01-02) is seeded with two department configs (FSS and AVS) to demonstrate the multi-department use case.
 
 ### 7.7 Verify the API
 
@@ -429,7 +454,7 @@ curl -X POST http://localhost:3000/bookings \
 ## 8. Running Tests
 
 ```bash
-# Run all unit tests (59 tests across 3 suites)
+# Run all unit tests (73 tests across 3 suites)
 npm test
 
 # Run with coverage report
@@ -462,14 +487,16 @@ s3-innovate-assignment/
 │   │
 │   ├── locations/
 │   │   ├── locations.module.ts              # Module definition, TypeORM entity registration
-│   │   ├── locations.controller.ts          # POST/GET/PATCH/DELETE /locations
+│   │   ├── locations.controller.ts          # POST/GET/PATCH/DELETE /locations + /departments sub-resource
 │   │   ├── locations.service.ts             # Business logic + TreeRepository operations
 │   │   ├── locations.service.spec.ts        # Unit tests for LocationsService
 │   │   ├── entities/
-│   │   │   └── location.entity.ts           # TypeORM entity — adjacency-list tree
+│   │   │   ├── location.entity.ts           # TypeORM entity — closure-table tree node
+│   │   │   └── location-department.entity.ts # Join table: dept configs per location
 │   │   └── dto/
-│   │       ├── create-location.dto.ts       # Validated input for location creation
-│   │       └── update-location.dto.ts       # Partial update DTO (all fields optional)
+│   │       ├── create-location.dto.ts           # Validated input for location creation
+│   │       ├── update-location.dto.ts           # Partial update DTO (all fields optional)
+│   │       └── create-location-department.dto.ts # Validated input for adding a dept config
 │   │
 │   ├── bookings/
 │   │   ├── bookings.module.ts               # Module definition, injects LocationsModule

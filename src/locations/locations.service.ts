@@ -65,7 +65,9 @@ export class LocationsService {
 
   async findTree(): Promise<Location[]> {
     this.logger.log('Fetching full location tree');
-    const trees = await this.treeRepo.findTrees();
+    const trees = await this.treeRepo.findTrees({
+      relations: ['departmentConfigs'],
+    });
     this.nullifyParents(trees);
     return trees;
   }
@@ -77,11 +79,10 @@ export class LocationsService {
     if (!location) {
       throw new NotFoundException(`Location '${locationNumber}' not found`);
     }
-    const tree = await this.treeRepo.findDescendantsTree(location);
-    tree.parent = null;
-    tree.departmentConfigs = await this.locationDepartmentRepo.find({
-      where: { locationId: tree.id },
+    const tree = await this.treeRepo.findDescendantsTree(location, {
+      relations: ['departmentConfigs'],
     });
+    tree.parent = null;
     return tree;
   }
 

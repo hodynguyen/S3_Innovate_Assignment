@@ -76,6 +76,7 @@ const SEED_DATA: LocationSeed[] = [
     parentNumber: 'A-01',
     departmentConfigs: [
       { department: 'FSS', capacity: 50, openTime: 'Mon to Fri (9AM to 6PM)' },
+      { department: 'AVS', capacity: 5, openTime: 'Mon to Fri (9AM to 6PM)' },
     ],
   },
 

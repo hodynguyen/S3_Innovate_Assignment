@@ -84,7 +84,10 @@ export class LocationsController {
   @ApiParam({ name: 'locationNumber', example: 'A-01-01' })
   @ApiParam({ name: 'department', example: 'EFM' })
   @ApiResponse({ status: 204, description: 'Department config removed' })
-  @ApiResponse({ status: 404, description: 'Location or department config not found' })
+  @ApiResponse({
+    status: 404,
+    description: 'Location or department config not found',
+  })
   removeDepartment(
     @Param('locationNumber') locationNumber: string,
     @Param('department') department: string,

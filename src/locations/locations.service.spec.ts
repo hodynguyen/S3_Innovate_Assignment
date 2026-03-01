@@ -1,7 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { NotFoundException, ConflictException } from '@nestjs/common';
-import { TreeRepository } from 'typeorm';
 import { LocationsService } from './locations.service';
 import { Location } from './entities/location.entity';
 import { LocationDepartment } from './entities/location-department.entity';
@@ -129,7 +128,6 @@ describe('LocationsService', () => {
     }).compile();
 
     service = module.get<LocationsService>(LocationsService);
-    module.get<TreeRepository<Location>>('LOCATION_TREE_REPO');
   });
 
   // -------------------------------------------------------------------------
@@ -236,6 +234,9 @@ describe('LocationsService', () => {
 
       const result = await service.findTree();
 
+      expect(treeRepo.findTrees).toHaveBeenCalledWith({
+        relations: ['departmentConfigs'],
+      });
       expect(result).toHaveLength(1);
       expect(result[0]).toMatchObject({ id: 1, locationNumber: 'A' });
       expect(result[0].parent).toBeNull();
@@ -248,6 +249,9 @@ describe('LocationsService', () => {
 
       const result = await service.findTree();
 
+      expect(treeRepo.findTrees).toHaveBeenCalledWith({
+        relations: ['departmentConfigs'],
+      });
       expect(result).toEqual([]);
     });
 
@@ -278,6 +282,9 @@ describe('LocationsService', () => {
 
       const result = await service.findTree();
 
+      expect(treeRepo.findTrees).toHaveBeenCalledWith({
+        relations: ['departmentConfigs'],
+      });
       expect(result[0].parent).toBeNull();
       expect(result[0].children[0].parent).toBeNull();
       expect(result[0].children[0].children[0].parent).toBeNull();
@@ -299,17 +306,6 @@ describe('LocationsService', () => {
 
     it('should return the node with its children and departmentConfigs when location exists', async () => {
       const location = makeLocation({ id: 1 });
-      const child = makeLocation({
-        id: 2,
-        locationNumber: 'A-01-01-M1',
-        parent: null,
-        children: [],
-      });
-      const locationWithChildren = makeLocation({
-        id: 1,
-        parent: null,
-        children: [child],
-      });
       const deptConfigs = [
         {
           id: 1,
@@ -319,10 +315,24 @@ describe('LocationsService', () => {
           openTime: 'Mon to Fri (9AM to 6PM)',
         } as LocationDepartment,
       ];
+      const child = makeLocation({
+        id: 2,
+        locationNumber: 'A-01-01-M1',
+        parent: null,
+        children: [],
+        departmentConfigs: [],
+      });
+      // findDescendantsTree with relations: ['departmentConfigs'] returns nodes
+      // with departmentConfigs already populated for every node in the subtree.
+      const locationWithChildren = makeLocation({
+        id: 1,
+        parent: null,
+        children: [child],
+        departmentConfigs: deptConfigs,
+      });
 
       locationRepo.findOne.mockResolvedValue(location);
       treeRepo.findDescendantsTree.mockResolvedValue(locationWithChildren);
-      locationDepartmentRepo.find.mockResolvedValue(deptConfigs);
 
       const result = await service.findOne('A-01-01');
 
@@ -331,6 +341,11 @@ describe('LocationsService', () => {
       expect(result.children).toHaveLength(1);
       expect(result.children[0]).toMatchObject({ id: 2 });
       expect(result.departmentConfigs).toBe(deptConfigs);
+      // findDescendantsTree must be called with the relations option so all nodes
+      // in the subtree — including children — have departmentConfigs loaded.
+      expect(treeRepo.findDescendantsTree).toHaveBeenCalledWith(location, {
+        relations: ['departmentConfigs'],
+      });
     });
 
     it('should nullify the parent on the tree root returned by findDescendantsTree', async () => {
@@ -342,15 +357,39 @@ describe('LocationsService', () => {
         id: 1,
         parent: parentLocation, // non-null — simulate TypeORM returning it
         children: [],
+        departmentConfigs: [],
       });
 
       locationRepo.findOne.mockResolvedValue(location);
       treeRepo.findDescendantsTree.mockResolvedValue(treeWithPopulatedParent);
-      locationDepartmentRepo.find.mockResolvedValue([]);
 
       const result = await service.findOne('A-01-01');
 
       expect(result.parent).toBeNull();
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // findById()
+  // -------------------------------------------------------------------------
+
+  describe('findById()', () => {
+    it('should throw NotFoundException when no location matches the id', async () => {
+      locationRepo.findOne.mockResolvedValue(null);
+
+      const error = await service.findById(999).catch((e) => e);
+      expect(error).toBeInstanceOf(NotFoundException);
+      expect(error.message).toMatch(/location with id 999 not found/i);
+    });
+
+    it('should return the location when the id exists', async () => {
+      const location = makeLocation({ id: 42, locationNumber: 'A-01' });
+      locationRepo.findOne.mockResolvedValue(location);
+
+      const result = await service.findById(42);
+
+      expect(result).toBe(location);
+      expect(locationRepo.findOne).toHaveBeenCalledWith({ where: { id: 42 } });
     });
   });
 
@@ -524,7 +563,9 @@ describe('LocationsService', () => {
         Object.assign(captured, data);
         return captured as LocationDepartment;
       });
-      locationDepartmentRepo.save.mockResolvedValue(captured as LocationDepartment);
+      locationDepartmentRepo.save.mockResolvedValue(
+        captured as LocationDepartment,
+      );
 
       const dto = makeCreateDeptDto({ openTime: undefined });
       await service.addDepartment('A-01-01', dto);

@@ -7,14 +7,18 @@ export class CreateLocationDepartmentDto {
   @IsNotEmpty()
   department: string;
 
-  @ApiProperty({ example: 10, description: 'Max occupancy for this department at this location' })
+  @ApiProperty({
+    example: 10,
+    description: 'Max occupancy for this department at this location',
+  })
   @IsInt()
   @Min(1)
   capacity: number;
 
   @ApiPropertyOptional({
     example: 'Mon to Fri (9AM to 6PM)',
-    description: 'Open time window. Use "Always open" for 24/7. Omit for no restriction.',
+    description:
+      'Open time window. Use "Always open" for 24/7. Omit for no restriction.',
   })
   @IsString()
   @IsOptional()

@@ -1,6 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
-import { BadRequestException } from '@nestjs/common';
+import { BadRequestException, ConflictException } from '@nestjs/common';
 import { Repository } from 'typeorm';
 import { BookingsService } from './bookings.service';
 import { Booking } from './entities/booking.entity';
@@ -57,6 +57,15 @@ function makeDeptConfig(
   } as LocationDepartment;
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function makeNoOverlapQB(): any {
+  return {
+    where: jest.fn().mockReturnThis(),
+    andWhere: jest.fn().mockReturnThis(),
+    getOne: jest.fn().mockResolvedValue(null),
+  };
+}
+
 function makeDto(overrides: Partial<CreateBookingDto> = {}): CreateBookingDto {
   return {
     locationNumber: 'A-01-01',
@@ -89,6 +98,7 @@ describe('BookingsService', () => {
             save: jest.fn(),
             find: jest.fn(),
             findOne: jest.fn(),
+            createQueryBuilder: jest.fn(),
           },
         },
         {
@@ -199,6 +209,7 @@ describe('BookingsService', () => {
         makeDeptConfig({ capacity: 10 }),
       );
       mockIsWithinOpenTime.mockReturnValue(true);
+      bookingRepo.createQueryBuilder.mockReturnValue(makeNoOverlapQB());
 
       const savedBooking = { id: 1 } as Booking;
       bookingRepo.create.mockReturnValue(savedBooking);
@@ -244,6 +255,7 @@ describe('BookingsService', () => {
       locationDepartmentRepo.findOne.mockResolvedValue(
         makeDeptConfig({ openTime: null }),
       );
+      bookingRepo.createQueryBuilder.mockReturnValue(makeNoOverlapQB());
 
       const savedBooking = { id: 2 } as Booking;
       bookingRepo.create.mockReturnValue(savedBooking);
@@ -264,6 +276,7 @@ describe('BookingsService', () => {
       locationsService.findOne.mockResolvedValue(location);
       locationDepartmentRepo.findOne.mockResolvedValue(makeDeptConfig());
       mockIsWithinOpenTime.mockReturnValue(true);
+      bookingRepo.createQueryBuilder.mockReturnValue(makeNoOverlapQB());
 
       const savedBooking = {
         id: 42,
@@ -293,6 +306,7 @@ describe('BookingsService', () => {
       locationsService.findOne.mockResolvedValue(makeLocation());
       locationDepartmentRepo.findOne.mockResolvedValue(makeDeptConfig());
       mockIsWithinOpenTime.mockReturnValue(true);
+      bookingRepo.createQueryBuilder.mockReturnValue(makeNoOverlapQB());
 
       const savedBooking = { id: 1 } as Booking;
       bookingRepo.create.mockReturnValue(savedBooking);
@@ -320,6 +334,7 @@ describe('BookingsService', () => {
       // When openTime is "Always open", the real isWithinOpenTime returns true.
       // We mock it to return true here to reflect that behaviour.
       mockIsWithinOpenTime.mockReturnValue(true);
+      bookingRepo.createQueryBuilder.mockReturnValue(makeNoOverlapQB());
 
       const savedBooking = { id: 99 } as Booking;
       bookingRepo.create.mockReturnValue(savedBooking);
@@ -332,6 +347,51 @@ describe('BookingsService', () => {
       });
 
       const result = await service.create(dto);
+      expect(result).toBe(savedBooking);
+    });
+
+    // -----------------------------------------------------------------------
+    // Overlap check
+    // -----------------------------------------------------------------------
+
+    it('should throw ConflictException when an overlapping booking exists', async () => {
+      locationsService.findOne.mockResolvedValue(makeLocation());
+      locationDepartmentRepo.findOne.mockResolvedValue(makeDeptConfig());
+      mockIsWithinOpenTime.mockReturnValue(true);
+
+      const existingBooking = {
+        id: 7,
+        startTime: new Date('2026-03-10T09:00:00.000Z'),
+        endTime: new Date('2026-03-10T11:00:00.000Z'),
+      } as Booking;
+
+      bookingRepo.createQueryBuilder.mockReturnValue({
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        getOne: jest.fn().mockResolvedValue(existingBooking),
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      } as any);
+
+      await expect(service.create(makeDto())).rejects.toThrow(
+        ConflictException,
+      );
+      await expect(service.create(makeDto())).rejects.toThrow(
+        /already booked from/i,
+      );
+    });
+
+    it('should proceed normally when no overlapping booking exists', async () => {
+      const location = makeLocation();
+      locationsService.findOne.mockResolvedValue(location);
+      locationDepartmentRepo.findOne.mockResolvedValue(makeDeptConfig());
+      mockIsWithinOpenTime.mockReturnValue(true);
+      bookingRepo.createQueryBuilder.mockReturnValue(makeNoOverlapQB());
+
+      const savedBooking = { id: 50 } as Booking;
+      bookingRepo.create.mockReturnValue(savedBooking);
+      bookingRepo.save.mockResolvedValue(savedBooking);
+
+      const result = await service.create(makeDto());
       expect(result).toBe(savedBooking);
     });
   });

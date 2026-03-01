@@ -2,6 +2,7 @@ import {
   Injectable,
   NotFoundException,
   BadRequestException,
+  ConflictException,
   Logger,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -67,6 +68,20 @@ export class BookingsService {
           `Booking end time is outside open hours for '${dto.locationNumber}' / '${dto.department}' (${deptConfig.openTime})`,
         );
       }
+    }
+
+    // Overlap check: reject if another booking at the same location overlaps this time window
+    const overlapping = await this.bookingRepo
+      .createQueryBuilder('booking')
+      .where('booking.locationId = :locationId', { locationId: location.id })
+      .andWhere('booking.startTime < :endTime', { endTime: endDate })
+      .andWhere('booking.endTime > :startTime', { startTime: startDate })
+      .getOne();
+
+    if (overlapping) {
+      throw new ConflictException(
+        `Location '${dto.locationNumber}' is already booked from ${overlapping.startTime.toISOString()} to ${overlapping.endTime.toISOString()}`,
+      );
     }
 
     const booking = this.bookingRepo.create({

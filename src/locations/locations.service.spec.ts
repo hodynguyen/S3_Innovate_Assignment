@@ -7,6 +7,7 @@ import { LocationDepartment } from './entities/location-department.entity';
 import { CreateLocationDto } from './dto/create-location.dto';
 import { UpdateLocationDto } from './dto/update-location.dto';
 import { CreateLocationDepartmentDto } from './dto/create-location-department.dto';
+import { UpdateLocationDepartmentDto } from './dto/update-location-department.dto';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -571,6 +572,124 @@ describe('LocationsService', () => {
       await service.addDepartment('A-01-01', dto);
 
       expect(captured.openTime).toBeNull();
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // updateDepartment()
+  // -------------------------------------------------------------------------
+
+  describe('updateDepartment()', () => {
+    it('should throw NotFoundException when location does not exist', async () => {
+      locationRepo.findOne.mockResolvedValue(null);
+
+      const dto: UpdateLocationDepartmentDto = { capacity: 20 };
+      const error = await service
+        .updateDepartment('Z-99-99', 'EFM', dto)
+        .catch((e) => e);
+      expect(error).toBeInstanceOf(NotFoundException);
+      expect(error.message).toMatch(/'Z-99-99' not found/i);
+    });
+
+    it('should throw NotFoundException when department config does not exist for the location', async () => {
+      const location = makeLocation({ id: 1 });
+      locationRepo.findOne.mockResolvedValue(location);
+      locationDepartmentRepo.findOne.mockResolvedValue(null);
+
+      const dto: UpdateLocationDepartmentDto = { capacity: 20 };
+      const error = await service
+        .updateDepartment('A-01-01', 'HR', dto)
+        .catch((e) => e);
+      expect(error).toBeInstanceOf(NotFoundException);
+      expect(error.message).toMatch(/not registered/i);
+      expect(error.message).toContain('HR');
+      expect(error.message).toContain('A-01-01');
+    });
+
+    it('should update capacity when capacity is provided', async () => {
+      const location = makeLocation({ id: 1 });
+      const deptConfig = makeDeptConfig({ id: 1, capacity: 10 });
+      const savedConfig = makeDeptConfig({ id: 1, capacity: 25 });
+
+      locationRepo.findOne.mockResolvedValue(location);
+      locationDepartmentRepo.findOne.mockResolvedValue(deptConfig);
+      locationDepartmentRepo.save.mockResolvedValue(savedConfig);
+
+      const dto: UpdateLocationDepartmentDto = { capacity: 25 };
+      const result = await service.updateDepartment('A-01-01', 'EFM', dto);
+
+      expect(deptConfig.capacity).toBe(25);
+      expect(locationDepartmentRepo.save).toHaveBeenCalledWith(deptConfig);
+      expect(result).toBe(savedConfig);
+    });
+
+    it('should update openTime when openTime is provided', async () => {
+      const location = makeLocation({ id: 1 });
+      const deptConfig = makeDeptConfig({ id: 1, openTime: 'Mon to Fri (9AM to 6PM)' });
+      const savedConfig = makeDeptConfig({ id: 1, openTime: 'Always open' });
+
+      locationRepo.findOne.mockResolvedValue(location);
+      locationDepartmentRepo.findOne.mockResolvedValue(deptConfig);
+      locationDepartmentRepo.save.mockResolvedValue(savedConfig);
+
+      const dto: UpdateLocationDepartmentDto = { openTime: 'Always open' };
+      const result = await service.updateDepartment('A-01-01', 'EFM', dto);
+
+      expect(deptConfig.openTime).toBe('Always open');
+      expect(locationDepartmentRepo.save).toHaveBeenCalledWith(deptConfig);
+      expect(result).toBe(savedConfig);
+    });
+
+    it('should only update provided fields and leave others unchanged', async () => {
+      const location = makeLocation({ id: 1 });
+      const deptConfig = makeDeptConfig({
+        id: 1,
+        capacity: 10,
+        openTime: 'Mon to Fri (9AM to 6PM)',
+      });
+      const savedConfig = makeDeptConfig({
+        id: 1,
+        capacity: 30,
+        openTime: 'Mon to Fri (9AM to 6PM)',
+      });
+
+      locationRepo.findOne.mockResolvedValue(location);
+      locationDepartmentRepo.findOne.mockResolvedValue(deptConfig);
+      locationDepartmentRepo.save.mockResolvedValue(savedConfig);
+
+      // Only capacity is provided — openTime must not change
+      const dto: UpdateLocationDepartmentDto = { capacity: 30 };
+      const result = await service.updateDepartment('A-01-01', 'EFM', dto);
+
+      expect(deptConfig.capacity).toBe(30);
+      expect(deptConfig.openTime).toBe('Mon to Fri (9AM to 6PM)');
+      expect(locationDepartmentRepo.save).toHaveBeenCalledWith(deptConfig);
+      expect(result).toBe(savedConfig);
+    });
+
+    it('should update both capacity and openTime when both are provided', async () => {
+      const location = makeLocation({ id: 1 });
+      const deptConfig = makeDeptConfig({
+        id: 1,
+        capacity: 10,
+        openTime: 'Mon to Fri (9AM to 6PM)',
+      });
+      const savedConfig = makeDeptConfig({
+        id: 1,
+        capacity: 50,
+        openTime: 'Always open',
+      });
+
+      locationRepo.findOne.mockResolvedValue(location);
+      locationDepartmentRepo.findOne.mockResolvedValue(deptConfig);
+      locationDepartmentRepo.save.mockResolvedValue(savedConfig);
+
+      const dto: UpdateLocationDepartmentDto = { capacity: 50, openTime: 'Always open' };
+      const result = await service.updateDepartment('A-01-01', 'EFM', dto);
+
+      expect(deptConfig.capacity).toBe(50);
+      expect(deptConfig.openTime).toBe('Always open');
+      expect(result).toBe(savedConfig);
     });
   });
 

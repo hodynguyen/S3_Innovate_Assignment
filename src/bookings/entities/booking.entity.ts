@@ -17,6 +17,9 @@ export class Booking {
   @JoinColumn({ name: 'locationId' })
   location: Location;
 
+  @Column({ name: 'locationId' })
+  locationId: number;
+
   @Column()
   department: string;
 

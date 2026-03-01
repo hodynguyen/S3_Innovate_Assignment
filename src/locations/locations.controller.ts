@@ -21,6 +21,7 @@ import { LocationsService } from './locations.service';
 import { CreateLocationDto } from './dto/create-location.dto';
 import { UpdateLocationDto } from './dto/update-location.dto';
 import { CreateLocationDepartmentDto } from './dto/create-location-department.dto';
+import { UpdateLocationDepartmentDto } from './dto/update-location-department.dto';
 
 @ApiTags('locations')
 @Controller('locations')
@@ -76,6 +77,26 @@ export class LocationsController {
       `POST /locations/${locationNumber}/departments - ${dto.department}`,
     );
     return this.locationsService.addDepartment(locationNumber, dto);
+  }
+
+  @Patch(':locationNumber/departments/:department')
+  @ApiOperation({ summary: 'Update capacity or openTime for a department config' })
+  @ApiParam({ name: 'locationNumber', example: 'A-01-01' })
+  @ApiParam({ name: 'department', example: 'EFM' })
+  @ApiResponse({ status: 200, description: 'Department config updated' })
+  @ApiResponse({
+    status: 404,
+    description: 'Location or department config not found',
+  })
+  updateDepartment(
+    @Param('locationNumber') locationNumber: string,
+    @Param('department') department: string,
+    @Body() dto: UpdateLocationDepartmentDto,
+  ) {
+    this.logger.log(
+      `PATCH /locations/${locationNumber}/departments/${department}`,
+    );
+    return this.locationsService.updateDepartment(locationNumber, department, dto);
   }
 
   @Delete(':locationNumber/departments/:department')

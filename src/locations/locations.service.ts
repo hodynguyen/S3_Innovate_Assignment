@@ -12,6 +12,7 @@ import { LocationDepartment } from './entities/location-department.entity';
 import { CreateLocationDto } from './dto/create-location.dto';
 import { UpdateLocationDto } from './dto/update-location.dto';
 import { CreateLocationDepartmentDto } from './dto/create-location-department.dto';
+import { UpdateLocationDepartmentDto } from './dto/update-location-department.dto';
 
 @Injectable()
 export class LocationsService {
@@ -186,6 +187,44 @@ export class LocationsService {
     const saved = await this.locationDepartmentRepo.save(deptConfig);
     this.logger.log(
       `Department '${dto.department}' added to location '${locationNumber}' (id=${saved.id})`,
+    );
+    return saved;
+  }
+
+  async updateDepartment(
+    locationNumber: string,
+    department: string,
+    dto: UpdateLocationDepartmentDto,
+  ): Promise<LocationDepartment> {
+    this.logger.log(
+      `Updating department '${department}' for location: ${locationNumber}`,
+    );
+    const location = await this.locationRepo.findOne({
+      where: { locationNumber },
+    });
+    if (!location) {
+      throw new NotFoundException(`Location '${locationNumber}' not found`);
+    }
+
+    const deptConfig = await this.locationDepartmentRepo.findOne({
+      where: { locationId: location.id, department },
+    });
+    if (!deptConfig) {
+      throw new NotFoundException(
+        `Department '${department}' is not registered for location '${locationNumber}'`,
+      );
+    }
+
+    if (dto.capacity !== undefined) {
+      deptConfig.capacity = dto.capacity;
+    }
+    if (dto.openTime !== undefined) {
+      deptConfig.openTime = dto.openTime;
+    }
+
+    const saved = await this.locationDepartmentRepo.save(deptConfig);
+    this.logger.log(
+      `Department '${department}' updated for location '${locationNumber}'`,
     );
     return saved;
   }

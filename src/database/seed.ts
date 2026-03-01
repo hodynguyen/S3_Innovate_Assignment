@@ -20,7 +20,7 @@ const AppDataSource = new DataSource({
   password: process.env.DB_PASS ?? 'password',
   database: process.env.DB_NAME ?? 's3_innovate',
   entities: [Location, LocationDepartment],
-  synchronize: true,
+  synchronize: false,
 });
 
 interface DepartmentConfigSeed {

@@ -72,7 +72,8 @@ export class BookingsService {
       try {
         startOk = isWithinOpenTime(deptConfig.openTime, startDate);
         endOk = isWithinOpenTime(deptConfig.openTime, endDate);
-      } catch {
+      } catch (err) {
+        if (!(err instanceof Error)) throw err;
         throw new BadRequestException(
           `Invalid openTime format for '${dto.locationNumber}' / '${dto.department}'`,
         );
@@ -145,6 +146,7 @@ export class BookingsService {
     this.logger.log(`Fetching bookings page=${dto.page} limit=${dto.limit}`);
     const { page = 1, limit = 20 } = dto;
     const [data, total] = await this.bookingRepo.findAndCount({
+      relations: ['location'],
       take: limit,
       skip: (page - 1) * limit,
       order: { createdAt: 'DESC' },
@@ -153,7 +155,10 @@ export class BookingsService {
   }
 
   async findOne(id: number): Promise<Booking> {
-    const booking = await this.bookingRepo.findOne({ where: { id } });
+    const booking = await this.bookingRepo.findOne({
+      where: { id },
+      relations: ['location'],
+    });
     if (!booking) {
       throw new NotFoundException(`Booking with id ${id} not found`);
     }

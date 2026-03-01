@@ -19,6 +19,8 @@ import {
   ApiResponse,
   ApiParam,
   ApiQuery,
+  ApiExtraModels,
+  getSchemaPath,
 } from '@nestjs/swagger';
 import { BookingsService } from './bookings.service';
 import { CreateBookingDto } from './dto/create-booking.dto';
@@ -26,6 +28,7 @@ import { PaginateBookingDto } from './dto/paginate-booking.dto';
 import { Booking } from './entities/booking.entity';
 
 @ApiTags('bookings')
+@ApiExtraModels(Booking)
 @Controller('bookings')
 export class BookingsController {
   private readonly logger = new Logger(BookingsController.name);
@@ -47,6 +50,10 @@ export class BookingsController {
       'Invalid request body or business rule violation (dept/capacity/time)',
   })
   @ApiResponse({ status: 404, description: 'Location not found' })
+  @ApiResponse({
+    status: 409,
+    description: 'Location already booked for this time slot',
+  })
   create(@Body() dto: CreateBookingDto) {
     this.logger.log(`POST /bookings - location: ${dto.locationNumber}`);
     return this.bookingsService.create(dto);
@@ -54,7 +61,20 @@ export class BookingsController {
 
   @Get()
   @ApiOperation({ summary: 'Get all bookings (paginated)' })
-  @ApiOkResponse({ description: 'Paginated list of bookings' })
+  @ApiOkResponse({
+    description: 'Paginated list of bookings',
+    schema: {
+      properties: {
+        data: {
+          type: 'array',
+          items: { $ref: getSchemaPath(Booking) },
+        },
+        total: { type: 'number', example: 42 },
+        page: { type: 'number', example: 1 },
+        limit: { type: 'number', example: 20 },
+      },
+    },
+  })
   @ApiQuery({ name: 'page', required: false, type: Number })
   @ApiQuery({ name: 'limit', required: false, type: Number })
   findAll(@Query() dto: PaginateBookingDto) {

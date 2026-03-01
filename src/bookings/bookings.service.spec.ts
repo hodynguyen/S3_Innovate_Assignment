@@ -492,6 +492,7 @@ describe('BookingsService', () => {
 
       expect(result).toEqual({ data: bookings, total: 2, page: 1, limit: 20 });
       expect(bookingRepo.findAndCount).toHaveBeenCalledWith({
+        relations: ['location'],
         take: 20,
         skip: 0,
         order: { createdAt: 'DESC' },
@@ -534,7 +535,10 @@ describe('BookingsService', () => {
 
       const result = await service.findOne(5);
       expect(result).toBe(booking);
-      expect(bookingRepo.findOne).toHaveBeenCalledWith({ where: { id: 5 } });
+      expect(bookingRepo.findOne).toHaveBeenCalledWith({
+        where: { id: 5 },
+        relations: ['location'],
+      });
     });
   });
 

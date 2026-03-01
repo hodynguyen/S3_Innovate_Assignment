@@ -12,6 +12,7 @@ import { Location } from '../../locations/entities/location.entity';
 
 @Entity('booking')
 @Index(['locationId', 'startTime', 'endTime'])
+@Index(['createdAt'])
 export class Booking {
   @ApiProperty({ example: 1 })
   @PrimaryGeneratedColumn()

@@ -702,6 +702,35 @@ describe('LocationsService', () => {
   });
 
   // -------------------------------------------------------------------------
+  // findDepartmentConfig()
+  // -------------------------------------------------------------------------
+
+  describe('findDepartmentConfig()', () => {
+    it('should return the config when found for the given locationId and department', async () => {
+      const config = makeDeptConfig({ id: 1, locationId: 1, department: 'EFM' });
+      locationDepartmentRepo.findOne.mockResolvedValue(config);
+
+      const result = await service.findDepartmentConfig(1, 'EFM');
+
+      expect(result).toBe(config);
+      expect(locationDepartmentRepo.findOne).toHaveBeenCalledWith({
+        where: { locationId: 1, department: 'EFM' },
+      });
+    });
+
+    it('should return null when no config exists for the given locationId and department', async () => {
+      locationDepartmentRepo.findOne.mockResolvedValue(null);
+
+      const result = await service.findDepartmentConfig(999, 'HR');
+
+      expect(result).toBeNull();
+      expect(locationDepartmentRepo.findOne).toHaveBeenCalledWith({
+        where: { locationId: 999, department: 'HR' },
+      });
+    });
+  });
+
+  // -------------------------------------------------------------------------
   // removeDepartment()
   // -------------------------------------------------------------------------
 

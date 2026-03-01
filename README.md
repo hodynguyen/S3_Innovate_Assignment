@@ -318,7 +318,7 @@ The `openTime` field is stored as a plain string and parsed at runtime by `open-
 
 **Parsing rules:**
 - Day range is inclusive on both ends: `Mon to Fri` includes Mon, Tue, Wed, Thu, Fri.
-- Hour range: start is inclusive, end is exclusive. `9AM to 6PM` = `09:00 <= time < 18:00`.
+- Hour range: start is inclusive, end is inclusive. `9AM to 6PM` = `09:00 <= time <= 18:00`.
 - Timezone: all comparisons use UTC. Clients must submit booking times as UTC ISO 8601 strings where the UTC value represents the local wall-clock time at the building (no server-side timezone conversion is applied).
 - `12PM` = noon (12:00), `12AM` = midnight (0:00) — standard 12-hour AM/PM parsing.
 
@@ -483,7 +483,7 @@ curl -X POST http://localhost:3000/bookings \
 ## 8. Running Tests
 
 ```bash
-# Run all unit tests (73 tests across 3 suites)
+# Run all unit tests (97 tests across 3 suites)
 npm test
 
 # Run with coverage report

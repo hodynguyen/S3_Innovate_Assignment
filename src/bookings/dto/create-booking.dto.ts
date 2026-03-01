@@ -4,6 +4,7 @@ import {
   IsNotEmpty,
   IsInt,
   Min,
+  MaxLength,
   IsDateString,
   Matches,
 } from 'class-validator';
@@ -23,6 +24,7 @@ export class CreateBookingDto {
   @ApiProperty({ example: 'EFM', description: 'Department making the booking' })
   @IsString()
   @IsNotEmpty()
+  @MaxLength(50)
   department: string;
 
   @ApiProperty({ example: 8, description: 'Number of attendees' })

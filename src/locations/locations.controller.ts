@@ -146,6 +146,7 @@ export class LocationsController {
 
   @Patch(':locationNumber')
   @ApiOperation({ summary: 'Update a location by locationNumber' })
+  @ApiOkResponse({ type: Location, description: 'Location updated successfully' })
   @ApiParam({ name: 'locationNumber', example: 'A-01-01' })
   @ApiResponse({ status: 404, description: 'Location not found' })
   update(

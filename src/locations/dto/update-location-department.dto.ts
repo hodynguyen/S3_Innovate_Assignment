@@ -2,7 +2,7 @@ import {
   IsInt,
   IsNotEmpty,
   IsOptional,
-  IsPositive,
+  Min,
   IsString,
 } from 'class-validator';
 import { ApiPropertyOptional } from '@nestjs/swagger';
@@ -15,7 +15,7 @@ export class UpdateLocationDepartmentDto {
   })
   @IsOptional()
   @IsInt()
-  @IsPositive()
+  @Min(1)
   capacity?: number;
 
   @ApiPropertyOptional({
